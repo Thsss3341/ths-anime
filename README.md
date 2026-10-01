@@ -26,6 +26,10 @@ This fork uses that URL. It also:
 - Refreshes the list when you pull to refresh instead of caching it until the
   app restarts.
 - Handles entries that link to sister sites (for example `anime1.pw`).
+- Shows each anime's real cover from [Bangumi](https://bgm.tv) instead of
+  anime1's single placeholder image. The lookup only runs when a cover is
+  displayed. To turn it off, uncheck **使用Bangumi封面** in the extension
+  settings.
 
 The source name and language are unchanged, so the source ID
 (`8121834351495460193`) is the same as the yuzono version. Your library
