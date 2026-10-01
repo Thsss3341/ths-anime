@@ -31,11 +31,12 @@ The source name and language are unchanged, so the source ID
 (`8121834351495460193`) is the same as the yuzono version. Your library
 entries carry over.
 
-## Install in Aniyomi
+## Install in Aniyomi / Animetail
 
 1. Uninstall the yuzono **Anime1.me** extension. It has the same package name
    but a different signature, so Android won't install this one over it.
-2. In Aniyomi, go to **More → Settings → Browse → Extension repos → Add** and enter:
+2. Go to **More → Settings → Browse → Extension repos → Add** (same place in
+   Aniyomi and Animetail) and enter:
 
    ```
    https://raw.githubusercontent.com/thsss3341/ths-anime/repo/index.min.json
@@ -47,7 +48,7 @@ entries carry over.
 ## Signing (one-time setup for the GitHub Action)
 
 The workflow in `.github/workflows/build.yml` builds on every push to `main`.
-It publishes the APK and `index.min.json` to the `repo` branch, and it needs a
+It publishes the APK, `index.min.json` and `repo.json` to the `repo` branch, and it needs a
 signing key stored in repository secrets. Keep the same key forever: Aniyomi
 refuses updates signed by a different key.
 
