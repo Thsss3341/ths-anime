@@ -25,6 +25,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Interceptor
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
@@ -33,6 +35,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
     // Keep name/lang identical to the original extension so the source ID
@@ -43,6 +46,10 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
     override val supportsLatest = true
 
     override fun headersBuilder() = super.headersBuilder().add("referer", "$baseUrl/")
+
+    override val client: OkHttpClient = network.client.newBuilder()
+        .addInterceptor(::coverInterceptor)
+        .build()
 
     private val videoApiUrl = "https://v.anime1.me/api"
 
@@ -63,16 +70,18 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
     override fun animeDetailsParse(response: Response) = throw UnsupportedOperationException()
 
     override suspend fun getAnimeDetails(anime: SAnime): SAnime {
-        return if (bangumiEnable) {
-            BangumiScraper.fetchDetail(
-                client,
-                ZhTwConverterUtil.toSimple(anime.title.removeSuffixMark()),
-                fetchType = bangumiFetchType,
-            )
-        } else {
-            anime.thumbnail_url = FIX_COVER
-            anime
+        if (bangumiEnable) {
+            val details = runCatching {
+                BangumiScraper.fetchDetail(network.client, anime.title.toBangumiKeyword(), bangumiFetchType)
+            }.getOrNull()
+            if (details != null) {
+                if (details.thumbnail_url.isNullOrBlank()) details.thumbnail_url = coverUrl(anime.title)
+                return details
+            }
         }
+        // Also replaces the old placeholder cover on entries already in the library.
+        anime.thumbnail_url = coverUrl(anime.title)
+        return anime
     }
 
     // Entries from sister sites (e.g. anime1.pw) are stored with an absolute URL.
@@ -155,7 +164,7 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
                         array.getContent(4),
                         array.getContent(5),
                     ).filter { g -> g.isNotBlank() }.joinToString()
-                    thumbnail_url = FIX_COVER
+                    thumbnail_url = coverUrl(title)
                 }
             },
             start + items.size < list.size,
@@ -178,7 +187,7 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
             SAnime.create().apply {
                 setUrlWithoutDomain(it.attr("href"))
                 title = it.ownText()
-                thumbnail_url = FIX_COVER
+                thumbnail_url = coverUrl(title)
             }
         }
         val previous = document.select(".nav-previous")
@@ -197,6 +206,12 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
     override fun getAnimeUrl(anime: SAnime): String = anime.url.toAbsoluteUrl()
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        val bangumiCover = CheckBoxPreference(screen.context).apply {
+            key = PREF_KEY_BANGUMI_COVER
+            title = "使用Bangumi封面"
+            summary = "從Bangumi搜尋每部動畫的封面，取代預設圖片"
+            setDefaultValue(true)
+        }
         val bangumiScraper = CheckBoxPreference(screen.context).apply {
             key = PREF_KEY_BANGUMI
             title = "啟用Bangumi刮削"
@@ -225,11 +240,14 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
             true
         }
         screen.apply {
+            addPreference(bangumiCover)
             addPreference(bangumiScraper)
             addPreference(bangumiFetchType)
         }
     }
 
+    private val bangumiCoverEnable: Boolean
+        get() = preferences.getBoolean(PREF_KEY_BANGUMI_COVER, true)
     private val bangumiEnable: Boolean
         get() = preferences.getBoolean(PREF_KEY_BANGUMI, false)
     private val bangumiFetchType: BangumiFetchType
@@ -237,6 +255,38 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
             BangumiFetchType.ALL.name -> BangumiFetchType.ALL
             else -> BangumiFetchType.SHORT
         }
+
+    /**
+     * anime1.me has no covers. Thumbnails point at a placeholder URL that
+     * [coverInterceptor] resolves to the Bangumi cover only when the image is
+     * actually loaded, so browsing doesn't fire a search per entry up front.
+     */
+    private fun coverUrl(title: String): String {
+        if (!bangumiCoverEnable) return FIX_COVER
+        return baseUrl.toHttpUrl().newBuilder()
+            .addPathSegment(COVER_PATH)
+            .addQueryParameter("q", title)
+            .build()
+            .toString()
+    }
+
+    // Title -> image URL. Only definitive answers are cached; network errors are retried next time.
+    private val coverCache = ConcurrentHashMap<String, String>()
+
+    private fun coverInterceptor(chain: Interceptor.Chain): Response {
+        val url = chain.request().url
+        if (url.host != COVER_HOST || url.pathSegments != listOf(COVER_PATH)) {
+            return chain.proceed(chain.request())
+        }
+        val title = url.queryParameter("q").orEmpty()
+        val imageUrl = coverCache[title] ?: runCatching {
+            BangumiScraper.search(network.client, title.toBangumiKeyword())?.images?.medium ?: FIX_COVER
+        }.onSuccess { coverCache[title] = it }.getOrDefault(FIX_COVER)
+        // A fresh request: Bangumi's image host doesn't need anime1's referer or cookies.
+        return chain.proceed(GET(imageUrl))
+    }
+
+    private fun String.toBangumiKeyword(): String = ZhTwConverterUtil.toSimple(removeSuffixMark())
 
     private fun String.toAbsoluteUrl(): String = if (startsWith("http")) this else baseUrl + this
 
@@ -268,7 +318,11 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
         const val FIX_COVER = "https://sta.anicdn.com/playerImg/8.jpg"
 
         const val PREF_KEY_BANGUMI = "PREF_KEY_BANGUMI"
+        const val PREF_KEY_BANGUMI_COVER = "PREF_KEY_BANGUMI_COVER"
         const val PREF_KEY_BANGUMI_FETCH_TYPE = "PREF_KEY_BANGUMI_FETCH_TYPE"
+
+        private const val COVER_HOST = "anime1.me"
+        private const val COVER_PATH = "__bangumi_cover__"
 
         private val TIMEZONE_COLON_REGEX = Regex("([+-]\\d{2}):(\\d{2})$")
     }
