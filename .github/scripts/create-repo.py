@@ -14,7 +14,8 @@ LABEL_REGEX = re.compile(r"^application-label:'([^']+)'", re.MULTILINE)
 ICON_REGEX = re.compile(r"^application-icon-320:'([^']+)'", re.MULTILINE)
 APK_REGEX = re.compile(r"^aniyomi-([^.]+)\.([^-]+)-v")
 SOURCE_FIELD_REGEX = r'override val {}\s*(?::\s*String)?\s*=\s*"([^"]+)"'
-FINGERPRINT_REGEX = re.compile(r"Signer #1 certificate SHA-256 digest: ([0-9a-f]+)")
+# "Signer #1 certificate SHA-256 digest: ..." on older apksigner, "V2 Signer: certificate ..." on newer.
+FINGERPRINT_REGEX = re.compile(r"certificate SHA-256 digest: ([0-9a-f]{64})")
 
 BUILD_TOOLS = sorted((Path(os.environ["ANDROID_HOME"]) / "build-tools").iterdir())[-1]
 REPO_DIR = Path("repo")
@@ -33,7 +34,10 @@ def signing_fingerprint(apk: Path) -> str:
     output = subprocess.check_output(
         [BUILD_TOOLS / "apksigner", "verify", "--print-certs", apk]
     ).decode()
-    return FINGERPRINT_REGEX.search(output).group(1)
+    match = FINGERPRINT_REGEX.search(output)
+    if not match:
+        raise SystemExit(f"Could not read the signing certificate of {apk.name}:\n{output}")
+    return match.group(1)
 
 
 def read_source(lang_dir: str, ext_dir: str) -> dict:
