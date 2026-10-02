@@ -7,6 +7,7 @@ import androidx.preference.CheckBoxPreference
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import com.github.houbb.opencc4j.util.ZhTwConverterUtil
+import eu.kanade.tachiyomi.animeextension.zh.anime1.BangumiScraper.applyTo
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
@@ -18,6 +19,8 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.contentOrNull
@@ -60,29 +63,188 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
     private val uploadDateFormat: SimpleDateFormat by lazy {
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.ENGLISH)
     }
-    private var data: JsonArray? = null
+    private var entries: List<ListEntry>? = null
     private val cookieManager
         get() = CookieManager.getInstance()
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
+    // ============================== Anime list ==============================
+
+    /** One row of animelist.json: [id, title, status, year, season, fansub]. */
+    private class ListEntry(
+        val url: String,
+        val title: String,
+        val ongoing: Boolean,
+        val year: String?,
+        val season: String?,
+        val fansub: String?,
+    ) {
+        /** See [airQuarter]. Some rows span two seasons ("2021夏/2022冬"); the first one counts. */
+        val airQuarter: Int? by lazy {
+            val y = year?.let { YEAR_REGEX.find(it) }?.value?.toInt() ?: return@lazy null
+            val index = season?.firstNotNullOfOrNull { SEASONS.indexOf(it).takeIf { i -> i >= 0 } }
+                ?: return@lazy null
+            y * 4 + index
+        }
+
+        val searchKey: String by lazy { title.toSearchKey() }
+
+        fun toSAnime(coverUrl: String) = SAnime.create().apply {
+            url = this@ListEntry.url
+            title = this@ListEntry.title
+            status = if (ongoing) SAnime.ONGOING else SAnime.COMPLETED
+            genre = listOfNotNull(year, season, fansub).filter { it.isNotBlank() }.joinToString()
+            thumbnail_url = coverUrl
+        }
+    }
+
+    private suspend fun loadEntries(): List<ListEntry> {
+        val body = client.newCall(GET("$animeListUrl?_=${System.currentTimeMillis()}", headers))
+            .awaitSuccess().body.string()
+        return json.decodeFromString<JsonArray>(body).map { row ->
+            val array = row.jsonArray
+            val id = array.getContent(0)!!
+            var url = "?cat=$id"
+            var title = array.getContent(1)!!
+            // Entries from sister sites (e.g. anime1.pw) come as a link with an absolute URL.
+            if (id == "0" || title.contains("</a>")) {
+                val doc = Jsoup.parse(title)
+                doc.selectFirst("a")?.let { link -> url = link.attr("href") }
+                title = doc.text()
+            }
+            ListEntry(
+                url = url,
+                title = title,
+                ongoing = array.getContent(2)?.contains("連載中") == true,
+                year = array.getContent(3),
+                season = array.getContent(4),
+                fansub = array.getContent(5),
+            )
+        }.also { entries = it }
+    }
+
+    private suspend fun findEntry(url: String): ListEntry? {
+        val list = entries ?: loadEntries()
+        return list.firstOrNull { it.url == url }
+    }
+
+    private fun List<ListEntry>.toPage(page: Int): AnimesPage {
+        val start = ((page - 1) * PAGE_SIZE).coerceAtMost(size)
+        val items = subList(start, (page * PAGE_SIZE).coerceAtMost(size))
+        return AnimesPage(items.map { it.toSAnime(coverUrl(it.title, it.airQuarter)) }, start + items.size < size)
+    }
+
+    override suspend fun getLatestUpdates(page: Int): AnimesPage {
+        // Refresh the list whenever the first page is requested.
+        val list = entries.takeIf { page > 1 } ?: loadEntries()
+        return list.toPage(page)
+    }
+
+    override suspend fun getPopularAnime(page: Int): AnimesPage {
+        return getLatestUpdates(page)
+    }
+
+    override fun latestUpdatesParse(response: Response) = throw UnsupportedOperationException()
+    override fun latestUpdatesRequest(page: Int) = throw UnsupportedOperationException()
+    override fun popularAnimeParse(response: Response) = throw UnsupportedOperationException()
+    override fun popularAnimeRequest(page: Int) = throw UnsupportedOperationException()
+
+    // ================================ Search ================================
+
+    /**
+     * Searches the anime list first so results are whole anime (which can be
+     * renamed and tracked), in Traditional or Simplified Chinese. Falls back to
+     * the site's own search, whose results are individual episodes.
+     */
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
+        val key = query.toSearchKey()
+        if (key.isNotEmpty()) {
+            val list = (if (page == 1) null else entries) ?: loadEntries()
+            val matches = list.filter { key in it.searchKey }
+            if (matches.isNotEmpty()) return matches.toPage(page)
+        }
+        return super.getSearchAnime(page, query, filters)
+    }
+
+    override fun searchAnimeParse(response: Response): AnimesPage {
+        // The site's search results are episodes.
+        val document = response.asJsoup()
+        val items = document.select("article.post .entry-title a").map {
+            SAnime.create().apply {
+                setUrlWithoutDomain(it.attr("href"))
+                title = it.ownText()
+                thumbnail_url = coverUrl(title, null)
+            }
+        }
+        val previous = document.select(".nav-previous")
+        return AnimesPage(items, previous.isNotEmpty())
+    }
+
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
+        val url = baseUrl.toHttpUrl().newBuilder()
+        if (page > 1) {
+            url.addPathSegments("page/$page")
+        }
+        url.addQueryParameter("s", query)
+        return GET(url.build(), headers)
+    }
+
+    // ================================ Details ===============================
+
     override fun animeDetailsParse(response: Response) = throw UnsupportedOperationException()
 
     override suspend fun getAnimeDetails(anime: SAnime): SAnime {
-        if (bangumiEnable) {
-            val details = runCatching {
-                BangumiScraper.fetchDetail(network.client, anime.title.toBangumiKeyword(), bangumiFetchType)
-            }.getOrNull()
-            if (details != null) {
-                if (details.thumbnail_url.isNullOrBlank()) details.thumbnail_url = coverUrl(anime.title)
-                return details
-            }
+        // Look things up by anime1's own title, not the stored one: that may have been renamed.
+        val entry = runCatching { findEntry(anime.url) }.getOrNull()
+        val chineseTitle = entry?.title ?: anime.title
+        val quarter = entry?.airQuarter
+        anime.thumbnail_url = coverUrl(chineseTitle, quarter)
+
+        // Only anime from the list can be renamed; others have no stable original title to come back to.
+        val titleLanguage = if (entry != null) titleLanguage else TitleLanguage.CHINESE
+        if (!bangumiEnable && titleLanguage == TitleLanguage.CHINESE) {
+            if (entry != null) anime.title = chineseTitle
+            return anime
         }
-        // Also replaces the old placeholder cover on entries already in the library.
-        anime.thumbnail_url = coverUrl(anime.title)
+
+        val subject = runCatching {
+            withContext(Dispatchers.IO) {
+                BangumiScraper.search(network.client, chineseTitle.toBangumiKeyword(), quarter)
+            }
+        }.getOrNull()
+        val mal = if (titleLanguage != TitleLanguage.CHINESE && subject != null) {
+            runCatching { withContext(Dispatchers.IO) { AniListMapper.find(network.client, subject) } }.getOrNull()
+        } else {
+            null
+        }
+
+        if (entry != null) {
+            anime.title = when (titleLanguage) {
+                TitleLanguage.CHINESE -> null
+                TitleLanguage.ROMAJI -> mal?.romaji ?: mal?.english
+                TitleLanguage.ENGLISH -> mal?.english ?: mal?.romaji
+            } ?: chineseTitle
+        }
+        if (bangumiEnable && subject != null) subject.applyTo(anime, bangumiFetchType)
+        anime.description = listOfNotNull(
+            mal?.let { malLine(it, chineseTitle) },
+            anime.description?.withoutMalLine()?.takeIf { it.isNotBlank() },
+        ).joinToString("\n\n").ifEmpty { null }
         return anime
     }
+
+    /** Shown at the top of the description; "id:123" can be pasted into the MAL tracker search. */
+    private fun malLine(mal: MalTitle, chineseTitle: String): String {
+        val name = mal.romaji ?: mal.english ?: chineseTitle
+        return MAL_LINE_PREFIX + name + (mal.malId?.let { " (id:$it)" } ?: "")
+    }
+
+    private fun String.withoutMalLine(): String =
+        if (startsWith(MAL_LINE_PREFIX)) substringAfter("\n", "").trimStart() else this
+
+    // =============================== Episodes ===============================
 
     // Entries from sister sites (e.g. anime1.pw) are stored with an absolute URL.
     override fun episodeListRequest(anime: SAnime): Request = GET(anime.url.toAbsoluteUrl(), headers)
@@ -111,6 +273,8 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
         return episodes
     }
 
+    // ================================ Videos ================================
+
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val req = document.selectFirst("video[data-apireq]")?.attr("data-apireq")
@@ -132,78 +296,9 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
         }
     }
 
-    override suspend fun getLatestUpdates(page: Int): AnimesPage {
-        // Refresh the list whenever the first page is requested.
-        val list = data.takeIf { page > 1 } ?: json.decodeFromString<JsonArray>(
-            client.newCall(GET("$animeListUrl?_=${System.currentTimeMillis()}", headers))
-                .awaitSuccess().body.string(),
-        ).also { data = it }
-        val start = ((page - 1) * PAGE_SIZE).coerceAtMost(list.size)
-        val items = list.subList(start, (page * PAGE_SIZE).coerceAtMost(list.size))
-        return AnimesPage(
-            items.map {
-                SAnime.create().apply {
-                    val array = it.jsonArray
-                    val id = array.getContent(0)!!
-                    url = "?cat=$id"
-                    title = array.getContent(1)!!
-                    if (id == "0" || title.contains("</a>")) {
-                        val doc = Jsoup.parse(title)
-                        doc.selectFirst("a")?.let { link ->
-                            url = link.attr("href")
-                        }
-                        title = doc.text()
-                    }
-                    status = if (array.getContent(2)?.contains("連載中") == true) {
-                        SAnime.ONGOING
-                    } else {
-                        SAnime.COMPLETED
-                    }
-                    genre = listOfNotNull(
-                        array.getContent(3),
-                        array.getContent(4),
-                        array.getContent(5),
-                    ).filter { g -> g.isNotBlank() }.joinToString()
-                    thumbnail_url = coverUrl(title)
-                }
-            },
-            start + items.size < list.size,
-        )
-    }
-
-    override suspend fun getPopularAnime(page: Int): AnimesPage {
-        return getLatestUpdates(page)
-    }
-
-    override fun latestUpdatesParse(response: Response) = throw UnsupportedOperationException()
-    override fun latestUpdatesRequest(page: Int) = throw UnsupportedOperationException()
-    override fun popularAnimeParse(response: Response) = throw UnsupportedOperationException()
-    override fun popularAnimeRequest(page: Int) = throw UnsupportedOperationException()
-
-    override fun searchAnimeParse(response: Response): AnimesPage {
-        // The search result is episode
-        val document = response.asJsoup()
-        val items = document.select("article.post .entry-title a").map {
-            SAnime.create().apply {
-                setUrlWithoutDomain(it.attr("href"))
-                title = it.ownText()
-                thumbnail_url = coverUrl(title)
-            }
-        }
-        val previous = document.select(".nav-previous")
-        return AnimesPage(items, previous.isNotEmpty())
-    }
-
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        val url = baseUrl.toHttpUrl().newBuilder()
-        if (page > 1) {
-            url.addPathSegments("page/$page")
-        }
-        url.addQueryParameter("s", query)
-        return GET(url.build(), headers)
-    }
-
     override fun getAnimeUrl(anime: SAnime): String = anime.url.toAbsoluteUrl()
+
+    // ============================== Settings ================================
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val bangumiCover = CheckBoxPreference(screen.context).apply {
@@ -211,6 +306,18 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
             title = "使用Bangumi封面"
             summary = "從Bangumi搜尋每部動畫的封面，取代預設圖片"
             setDefaultValue(true)
+        }
+        val titleLanguagePref = ListPreference(screen.context).apply {
+            key = PREF_KEY_TITLE_LANGUAGE
+            title = "標題語言（方便MAL追蹤）"
+            entries = TitleLanguage.entries.map { it.label }.toTypedArray()
+            entryValues = TitleLanguage.entries.map { it.name }.toTypedArray()
+            setDefaultValue(TitleLanguage.CHINESE.name)
+            summary = titleLanguageSummary(titleLanguage)
+            setOnPreferenceChangeListener { _, value ->
+                summary = titleLanguageSummary(TitleLanguage.entries.first { it.name == value })
+                true
+            }
         }
         val bangumiScraper = CheckBoxPreference(screen.context).apply {
             key = PREF_KEY_BANGUMI
@@ -241,11 +348,28 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
         }
         screen.apply {
             addPreference(bangumiCover)
+            addPreference(titleLanguagePref)
             addPreference(bangumiScraper)
             addPreference(bangumiFetchType)
         }
     }
 
+    private fun titleLanguageSummary(language: TitleLanguage): String {
+        if (language == TitleLanguage.CHINESE) return language.label
+        return "${language.label}\n打開動畫頁面時改名，讓MAL追蹤可直接搜尋到。" +
+            "已收藏的動畫需在App設定開啟「Update library anime titles to match source」，再下拉刷新該動畫。"
+    }
+
+    private enum class TitleLanguage(val label: String) {
+        CHINESE("中文（anime1原標題）"),
+        ROMAJI("羅馬拼音（MAL標題）"),
+        ENGLISH("英文（沒有英文名時用羅馬拼音）"),
+    }
+
+    private val titleLanguage: TitleLanguage
+        get() = preferences.getString(PREF_KEY_TITLE_LANGUAGE, null)
+            ?.let { saved -> TitleLanguage.entries.firstOrNull { it.name == saved } }
+            ?: TitleLanguage.CHINESE
     private val bangumiCoverEnable: Boolean
         get() = preferences.getBoolean(PREF_KEY_BANGUMI_COVER, true)
     private val bangumiEnable: Boolean
@@ -256,21 +380,25 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
             else -> BangumiFetchType.SHORT
         }
 
+    // ================================ Covers ================================
+
     /**
      * anime1.me has no covers. Thumbnails point at a placeholder URL that
      * [coverInterceptor] resolves to the Bangumi cover only when the image is
      * actually loaded, so browsing doesn't fire a search per entry up front.
+     * [quarter] (see [airQuarter]) picks the right season of a series.
      */
-    private fun coverUrl(title: String): String {
+    private fun coverUrl(title: String, quarter: Int?): String {
         if (!bangumiCoverEnable) return FIX_COVER
         return baseUrl.toHttpUrl().newBuilder()
             .addPathSegment(COVER_PATH)
             .addQueryParameter("q", title)
+            .apply { if (quarter != null) addQueryParameter("t", quarter.toString()) }
             .build()
             .toString()
     }
 
-    // Title -> image URL. Only definitive answers are cached; network errors are retried next time.
+    // Cover URL -> image URL. Only definitive answers are cached; network errors are retried next time.
     private val coverCache = ConcurrentHashMap<String, String>()
 
     private fun coverInterceptor(chain: Interceptor.Chain): Response {
@@ -279,12 +407,16 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
             return chain.proceed(chain.request())
         }
         val title = url.queryParameter("q").orEmpty()
-        val imageUrl = coverCache[title] ?: runCatching {
-            BangumiScraper.search(network.client, title.toBangumiKeyword())?.images?.medium ?: FIX_COVER
-        }.onSuccess { coverCache[title] = it }.getOrDefault(FIX_COVER)
+        val quarter = url.queryParameter("t")?.toIntOrNull()
+        val key = url.toString()
+        val imageUrl = coverCache[key] ?: runCatching {
+            BangumiScraper.search(network.client, title.toBangumiKeyword(), quarter)?.images?.medium ?: FIX_COVER
+        }.onSuccess { coverCache[key] = it }.getOrDefault(FIX_COVER)
         // A fresh request: Bangumi's image host doesn't need anime1's referer or cookies.
         return chain.proceed(GET(imageUrl))
     }
+
+    // ================================ Utils =================================
 
     private fun String.toBangumiKeyword(): String = ZhTwConverterUtil.toSimple(removeSuffixMark())
 
@@ -320,11 +452,19 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
         const val PREF_KEY_BANGUMI = "PREF_KEY_BANGUMI"
         const val PREF_KEY_BANGUMI_COVER = "PREF_KEY_BANGUMI_COVER"
         const val PREF_KEY_BANGUMI_FETCH_TYPE = "PREF_KEY_BANGUMI_FETCH_TYPE"
+        const val PREF_KEY_TITLE_LANGUAGE = "PREF_KEY_TITLE_LANGUAGE"
 
         private const val COVER_HOST = "anime1.me"
         private const val COVER_PATH = "__bangumi_cover__"
+        private const val MAL_LINE_PREFIX = "MAL: "
 
+        private const val SEASONS = "冬春夏秋"
+        private val YEAR_REGEX = Regex("\\d{4}")
         private val TIMEZONE_COLON_REGEX = Regex("([+-]\\d{2}):(\\d{2})$")
+
+        /** Case-, space- and script-insensitive form used for searching titles. */
+        private fun String.toSearchKey(): String =
+            ZhTwConverterUtil.toSimple(lowercase()).filterNot { it.isWhitespace() }
     }
 }
 
