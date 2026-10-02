@@ -30,10 +30,37 @@ This fork uses that URL. It also:
   anime1's single placeholder image. The lookup only runs when a cover is
   displayed. To turn it off, uncheck **使用Bangumi封面** in the extension
   settings.
+- Optionally renames anime to the title MyAnimeList uses, so MAL tracking
+  finds them without typing a Japanese or English name. See
+  [MAL tracking](#mal-tracking).
+- Search matches anime1's anime list (Traditional or Simplified Chinese), so
+  results are whole anime instead of single episodes. If nothing matches, it
+  falls back to the site's own search.
 
 The source name and language are unchanged, so the source ID
 (`8121834351495460193`) is the same as the yuzono version. Your library
 entries carry over.
+
+## MAL tracking
+
+Tracker search uses the anime's title, and anime1's titles are Chinese, which
+MyAnimeList can't find. In the extension settings, set **標題語言（方便MAL追蹤）**
+to **羅馬拼音（MAL標題）** or **英文**. When you open an anime, the extension:
+
+1. Looks it up on Bangumi using anime1's Chinese title and its year/season, so
+   the right season of a series is picked.
+2. Takes Bangumi's original Japanese title to AniList, which returns the MAL
+   ID and the romaji/English title MAL uses.
+3. Renames the anime to that title. It also adds a `MAL: <title> (id:12345)`
+   line to the description; pasting `id:12345` into the MAL search box gives
+   an exact match.
+
+If no match aired close to anime1's year/season, the Chinese title is kept
+rather than guessing. Switching back to 中文 restores anime1's titles.
+
+Anime already in your library are only renamed if the app's **Update library
+anime titles to match source** setting (Anikku: Settings → Advanced) is on.
+Then pull down to refresh the anime.
 
 ## Install in Aniyomi / Animetail
 
