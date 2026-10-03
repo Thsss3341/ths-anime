@@ -222,7 +222,7 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
 
         if (entry != null) {
             anime.title = when (titleLanguage) {
-                TitleLanguage.CHINESE -> null
+                TitleLanguage.CHINESE, TitleLanguage.CHINESE_WITH_ID -> null
                 TitleLanguage.ROMAJI -> mal?.romaji ?: mal?.english
                 TitleLanguage.ENGLISH -> mal?.english ?: mal?.romaji
             } ?: chineseTitle
@@ -356,12 +356,17 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
 
     private fun titleLanguageSummary(language: TitleLanguage): String {
         if (language == TitleLanguage.CHINESE) return language.label
+        if (language == TitleLanguage.CHINESE_WITH_ID) {
+            return "${language.label}\n標題保持中文，打開動畫頁面時在簡介最上面加上「MAL: 標題 (id:12345)」，" +
+                "可複製到MAL追蹤搜尋。"
+        }
         return "${language.label}\n打開動畫頁面時改名，讓MAL追蹤可直接搜尋到。" +
             "已收藏的動畫需在App設定開啟「Update library anime titles to match source」，再下拉刷新該動畫。"
     }
 
     private enum class TitleLanguage(val label: String) {
         CHINESE("中文（anime1原標題）"),
+        CHINESE_WITH_ID("中文，簡介裡加上MAL ID"),
         ROMAJI("羅馬拼音（MAL標題）"),
         ENGLISH("英文（沒有英文名時用羅馬拼音）"),
     }
