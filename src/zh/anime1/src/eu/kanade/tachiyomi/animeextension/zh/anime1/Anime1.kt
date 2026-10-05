@@ -235,14 +235,18 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
         return anime
     }
 
-    /** Shown at the top of the description; "id:123" can be pasted into the MAL tracker search. */
+    /**
+     * Shown at the top of the description. The ID gets a line of its own so a long press selects
+     * just "id:123", which pasted into the MAL tracker search gives an exact match.
+     */
     private fun malLine(mal: MalTitle, chineseTitle: String): String {
         val name = mal.romaji ?: mal.english ?: chineseTitle
-        return MAL_LINE_PREFIX + name + (mal.malId?.let { " (id:$it)" } ?: "")
+        return MAL_LINE_PREFIX + name + (mal.malId?.let { "\nid:$it" } ?: "")
     }
 
+    /** The MAL block is separated from the rest by a blank line, in this and the older one-line format. */
     private fun String.withoutMalLine(): String =
-        if (startsWith(MAL_LINE_PREFIX)) substringAfter("\n", "").trimStart() else this
+        if (startsWith(MAL_LINE_PREFIX)) substringAfter("\n\n", "").trimStart() else this
 
     // =============================== Episodes ===============================
 
@@ -357,7 +361,7 @@ class Anime1 : AnimeHttpSource(), ConfigurableAnimeSource {
     private fun titleLanguageSummary(language: TitleLanguage): String {
         if (language == TitleLanguage.CHINESE) return language.label
         if (language == TitleLanguage.CHINESE_WITH_ID) {
-            return "${language.label}\n標題保持中文，打開動畫頁面時在簡介最上面加上「MAL: 標題 (id:12345)」，" +
+            return "${language.label}\n標題保持中文，打開動畫頁面時在簡介最上面加上MAL標題和「id:12345」，" +
                 "可複製到MAL追蹤搜尋。"
         }
         return "${language.label}\n打開動畫頁面時改名，讓MAL追蹤可直接搜尋到。" +

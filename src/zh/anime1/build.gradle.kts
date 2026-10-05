@@ -8,7 +8,7 @@ plugins {
 
 val extName = "Anime1.me"
 val extClass = ".Anime1"
-val extVersionCode = 8
+val extVersionCode = 9
 val isNsfw = false
 
 // Aniyomi reads the extensions-lib version from the major part of versionName.
