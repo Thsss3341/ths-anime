@@ -50,7 +50,7 @@ MyAnimeList can't find. In the extension settings, set **標題語言（方便MA
 | Option | Effect |
 |--------|--------|
 | 中文（anime1原標題） | Default, nothing is looked up. |
-| 中文，簡介裡加上MAL ID | Keeps the Chinese title and adds `MAL: <title> (id:12345)` to the top of the description. Copy the title, or paste `id:12345` into the MAL tracker search for an exact match. |
+| 中文，簡介裡加上MAL ID | Keeps the Chinese title and starts the description with `MAL: <title>` and, on its own line, `id:12345`. Copy the title, or long-press the ID line and paste it into the MAL tracker search for an exact match. |
 | 羅馬拼音（MAL標題） / 英文 | Also renames the anime to MAL's romaji or English title, so the tracker search finds it as is. |
 
 When an anime's details load, the extension:
