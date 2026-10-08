@@ -8,7 +8,7 @@ Watch anime from [anime1.me](https://anime1.me) with real covers, better search 
 easy MyAnimeList (MAL) tracking.
 
 > [!NOTE]
-> This is a personal project, maintained for my own reading. Extensions may break when a site
+> This is a personal project, maintained for my own watching. Extensions may break when a site
 > changes, and fixes depend on my free time. Most of the code was written with the help of AI
 > (Claude Code) and tested by me on my own device.
 
