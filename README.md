@@ -7,6 +7,11 @@ An improved **Anime1.me** extension for [Anikku](https://github.com/komikku-app/
 Watch anime from [anime1.me](https://anime1.me) with real covers, better search and
 easy MyAnimeList (MAL) tracking.
 
+> [!NOTE]
+> This is a personal project, maintained for my own reading. Extensions may break when a site
+> changes, and fixes depend on my free time. Most of the code was written with the help of AI
+> (Claude Code) and tested by me on my own device.
+
 ## Contents
 
 - [Features](#features)
