@@ -18,11 +18,13 @@ import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.IOException
 import java.net.URLDecoder
 import java.security.MessageDigest
 import java.util.Calendar
@@ -54,6 +56,8 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
 
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", DESKTOP_USER_AGENT)
+        .set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .set("Accept-Language", "zh-CN,zh;q=0.9")
         .set("Referer", "$baseUrl/")
 
     // Also covers requests built without the source's headers, which would otherwise get the
@@ -63,7 +67,25 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
             val request = chain.request().newBuilder().header("User-Agent", DESKTOP_USER_AGENT).build()
             chain.proceed(request)
         }
+        .addInterceptor(::explainRefusal)
         .build()
+
+    /** Turns the site's refusals into messages that say which request failed and why. */
+    private fun explainRefusal(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val response = chain.proceed(request)
+        if (response.code != 405) return response
+        val body = response.peekBody(64 * 1024).string()
+        response.close()
+        val what = "${request.method} ${request.url.encodedPath}"
+        throw IOException(
+            if ("Android" in body) {
+                "网站把请求当成 Android 设备而拒绝（HTTP 405，$what）"
+            } else {
+                "网站拒绝了这个请求（HTTP 405，$what）"
+            },
+        )
+    }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         SwitchPreferenceCompat(screen.context).apply {
@@ -112,7 +134,7 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
         val url = baseUrl.toHttpUrl().newBuilder()
             .addPathSegments("show/20/by/$by")
             .addPathSegments("page/$page.html")
-        return POST(url.build().toString(), headers)
+        return GET(url.build(), headers)
     }
 
     private fun vodListParse(response: Response) = response.asJsoup().let { doc ->
