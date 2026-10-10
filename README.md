@@ -9,6 +9,7 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
 |-----------|------|------------|
 | **Anime1.me** | [anime1.me](https://anime1.me) | Works again, real covers, better search, easy MyAnimeList (MAL) tracking |
 | **Xfani** (稀饭动漫) | [next.xifanacg.com](https://next.xifanacg.com) | Works again on the site's new website: search, browse and playback |
+| **Cycity** (次元城动漫) | [cycani.org](https://www.cycani.org) | Works again now that the site turns away Android devices |
 
 > [!NOTE]
 > This is a personal project, maintained for my own watching. Extensions may break when a site
@@ -20,6 +21,7 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
 - [Features](#features)
   - [Anime1.me](#anime1me)
   - [Xfani (稀饭动漫)](#xfani-稀饭动漫)
+  - [Cycity (次元城动漫)](#cycity-次元城动漫)
 - [Install](#install)
 - [Settings](#settings)
 - [Tracking with MyAnimeList](#tracking-with-myanimelist)
@@ -55,9 +57,17 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
   list is rebuilt from the new site once, so episodes you had marked as watched show as unwatched
   again.
 
+### Cycity (次元城动漫)
+
+- **Works again.** 次元城 now refuses its website to Android devices (HTTP 405, "请使用 Android
+  APP") to push its own app, and the yuzono extension identifies itself as an Android phone. This
+  version identifies itself as a desktop browser instead. Everything else works as before.
+- **Keeps your library.** Anime saved with the yuzono Cycity extension carry over, including watch
+  history.
+
 ## Install
 
-1. **If you have the yuzono Anime1.me or Xfani extension installed, uninstall it first.** They
+1. **If you have the yuzono Anime1.me, Xfani or Cycity extension installed, uninstall it first.** They
    have the same names, so Android won't install these over them. Your library is kept.
 2. Add this repository to the app, using either option:
    - **One tap:** open this link on your phone:
@@ -68,7 +78,7 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
      https://raw.githubusercontent.com/thsss3341/ths-anime/repo/index.min.json
      ```
 
-3. Go to **Browse → Extensions**, find **Anime1.me** and/or **Xfani** and install them. Tap
+3. Go to **Browse → Extensions**, find **Anime1.me**, **Xfani** and/or **Cycity** and install them. Tap
    **Trust** if the app asks.
 
 ## Settings
@@ -89,6 +99,12 @@ Open them from **Browse → Extensions**, then the extension's settings icon.
 | Setting | What it does | Default |
 |---------|--------------|---------|
 | **首选播放线路** | Which line's video is listed first. The other lines are still listed below it. | 主线-1 |
+
+### Cycity (次元城动漫)
+
+| Setting | What it does | Default |
+|---------|--------------|---------|
+| **热门动画显示番剧周表** | Shows today's airing schedule under Popular instead of the most-watched anime. | Off |
 
 ## Tracking with MyAnimeList
 
@@ -160,6 +176,17 @@ and install Xfani from this repository ([Install](#install)).
 Open the episode's video list and pick another line. Lines sometimes miss a file, especially
 备用-1 for brand-new episodes.
 
+**Cycity: "HTTP error 405" or "请使用 Android APP"**<br>
+You're still using the old yuzono Cycity extension. Uninstall it and install Cycity from this
+repository ([Install](#install)).
+
+**Cycity: "HTTP error 403" or "不提供服务"**<br>
+次元城 blocks some countries and VPN/proxy connections. Turn off any VPN or proxy and try again.
+
+**Cycity: "请在 WebView 中输入验证码"**<br>
+The site wants a captcha for search. Open the extension's WebView (the globe icon), enter the
+code there, then search again.
+
 **Adding the repository fails with "HTTP 404"**<br>
 Check that the URL was pasted exactly, or use the one-tap link. If you tried several times in a
 row, wait five minutes and try again.
@@ -182,8 +209,8 @@ happened.
 
 ## Credits
 
-- Based on the Anime1.me and Xfani extensions from [yuzono](https://github.com/yuzono/anime-extensions) and
+- Based on the Anime1.me, Xfani and Cycity extensions from [yuzono](https://github.com/yuzono/anime-extensions) and
   [Kohi-den](https://github.com/Kohi-den/extensions-source).
 - Covers and details from [Bangumi](https://bgm.tv); MAL titles and IDs via
   [AniList](https://anilist.co).
-- Not affiliated with anime1.me or 稀饭动漫. Licensed under the [Apache License 2.0](LICENSE).
+- Not affiliated with anime1.me, 稀饭动漫 or 次元城动漫. Licensed under the [Apache License 2.0](LICENSE).
