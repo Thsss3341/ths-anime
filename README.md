@@ -113,6 +113,7 @@ Open them from **Browse → Extensions**, then the extension's settings icon.
 | **热门动画显示番剧周表** | Shows today's airing schedule under Popular instead of the most-watched anime. | Off |
 | **次元城账号** | Your 次元城 username. Needed to play videos. | Empty |
 | **次元城密码** | Your 次元城 password. Stored only in the app on your phone. | Empty |
+| **最近一次错误** | Read-only. The full reason the last video failed to load, for reporting problems. | 无 |
 
 Instead of entering your account, you can also log in to 次元城 in the extension's WebView; the
 extension then uses that login.
@@ -195,8 +196,9 @@ install Cycity from this repository ([Install](#install)).
 Enter your 次元城 username and password in the extension's settings. If you don't have an account,
 register on [cycani.org](https://www.cycani.org) or in the 次元城 app. If logging in from the
 extension still fails, open the extension's WebView (the globe icon), log in to 次元城 there, and
-play the episode again: the extension uses that login too. If it still fails, send a screenshot of
-the error; it lists why each login attempt failed.
+play the episode again: the extension uses that login too. If it still fails, open the extension's
+settings and tap **最近一次错误**: it shows why each attempt failed (you can copy the text). Send
+that along when you report it.
 
 **Cycity: "播放太频繁"**<br>
 次元城 limits how many videos an account can open in a short time. Wait a while and try again.
