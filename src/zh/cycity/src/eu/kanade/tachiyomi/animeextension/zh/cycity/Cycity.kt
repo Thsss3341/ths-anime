@@ -216,10 +216,11 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
     override suspend fun getVideoList(episode: SEpisode): List<Video> {
         val sectionId = (baseUrl + episode.url).toHttpUrl().queryParameter("section")
             ?: throw Exception("这一集来自旧版网站，请在动画页面下拉刷新集数列表")
-        val play = withLogin { session ->
+        val play = withLogin(sectionId) { session ->
             val url = "${session.backend.apiUrl}/v2/sections/$sectionId/play-url"
             api<PlayUrlDto>(GET(url, session.backend.headers(session.token)))
         }
+        preferences.edit().remove(PREF_LAST_ERROR).apply()
         val url = play.url?.takeIf { it.isNotBlank() } ?: throw Exception("找不到视频")
         return listOf(Video(url, play.name?.ifBlank { null } ?: "默认", url, videoHeaders))
     }
@@ -255,66 +256,110 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
         companion object {
             fun parse(saved: String?): Session? {
                 val backend = saved?.substringBefore(':')?.let { name -> Backend.entries.firstOrNull { it.name == name } }
-                val token = saved?.substringAfter(':', "")?.ifBlank { null }
+                val token = saved?.substringAfter(':', "")?.let(::bareToken)
                 return if (backend != null && token != null) Session(backend, token) else null
             }
+
+            /** The website and the app both accept tokens with or without a "Bearer " prefix. */
+            fun bareToken(token: String): String? = token.trim().replace(BEARER_PREFIX, "").trim().ifEmpty { null }
+
+            private val BEARER_PREFIX = Regex("""^Bearer\s+""", RegexOption.IGNORE_CASE)
         }
     }
 
     /**
      * Runs [block] with a logged-in session: the saved one, else a fresh login with the account
-     * from the settings, else the login saved by the website in WebView. Each new session is only
-     * kept once [block] accepts it.
+     * from the settings, else the login saved by the website in WebView. Every token is tried on
+     * both backends, and a new session is only kept once [block] accepts it. As a last resort, the
+     * older play-URL endpoint is tried without logging in.
+     *
+     * When everything fails, the toast gets a short message and the full report is saved for the
+     * "最近一次错误" setting, since toasts cut long messages off.
      */
-    private suspend fun <T> withLogin(block: suspend (Session) -> T): T {
+    private suspend fun withLogin(sectionId: String, block: suspend (Session) -> PlayUrlDto): PlayUrlDto {
         Session.parse(preferences.getString(PREF_TOKEN, null))?.let { saved ->
             try {
                 return block(saved)
             } catch (e: ApiException) {
-                if (!e.isAuthError) throw e.forPlayback()
+                if (e.code == 429) throw e.forPlayback()
             }
         }
         preferences.edit().remove(PREF_TOKEN).apply()
 
-        val failures = mutableListOf<String>()
+        val report = mutableListOf<String>()
         val username = preferences.getString(PREF_USERNAME, null)?.trim().orEmpty()
         val password = preferences.getString(PREF_PASSWORD, null).orEmpty()
         val hasAccount = username.isNotEmpty() && password.isNotEmpty()
+        var gotToken = false
 
-        suspend fun attempt(label: String, getSession: suspend () -> Session?): T? {
-            val session = try {
-                getSession() ?: return null
+        suspend fun attempt(label: String, preferred: Backend, getToken: suspend () -> String?): PlayUrlDto? {
+            val raw = try {
+                getToken() ?: run {
+                    report += "$label：没有找到登录"
+                    return null
+                }
             } catch (e: Exception) {
-                failures += "$label：${e.message}"
+                report += "$label：失败（${e.message}）"
                 return null
             }
-            return try {
-                block(session).also { preferences.edit().putString(PREF_TOKEN, session.toString()).apply() }
-            } catch (e: ApiException) {
-                if (!e.isAuthError) throw e.forPlayback()
-                failures += "$label：登录后仍被拒绝（${e.message}）"
-                null
-            } catch (e: Exception) {
-                failures += "$label：登录成功，但读取视频失败（${e.message}）"
-                null
+            val token = Session.bareToken(raw) ?: run {
+                report += "$label：登录凭证为空"
+                return null
             }
+            gotToken = true
+            report += "$label：成功，凭证${describeToken(raw)}"
+            for (backend in listOf(preferred) + Backend.entries.filter { it != preferred }) {
+                val session = Session(backend, token)
+                try {
+                    return block(session).also { preferences.edit().putString(PREF_TOKEN, session.toString()).apply() }
+                } catch (e: ApiException) {
+                    if (e.code == 429) throw e.forPlayback()
+                    report += "  → ${backend.label}播放地址：被拒绝（${e.message}）"
+                } catch (e: Exception) {
+                    report += "  → ${backend.label}播放地址：失败（${e.message}）"
+                }
+            }
+            return null
         }
 
         if (hasAccount) {
             for (backend in Backend.entries) {
-                attempt("${backend.label}登录") { Session(backend, login(backend, username, password)) }
-                    ?.let { return it }
+                attempt("${backend.label}登录", backend) { login(backend, username, password) }?.let { return it }
+            }
+        } else {
+            report += "账号密码：未填写"
+        }
+        attempt("WebView 登录", Backend.WEBSITE) { webViewToken() }?.let { return it }
+
+        for (backend in Backend.entries) {
+            try {
+                return api(GET("${backend.apiUrl}/sections/$sectionId/play-url", backend.headers()))
+            } catch (e: Exception) {
+                report += "免登录${backend.label}播放地址：失败（${e.message}）"
             }
         }
-        attempt("WebView 登录") { webViewToken()?.let { Session(Backend.WEBSITE, it) } }?.let { return it }
 
-        if (!hasAccount && failures.isEmpty()) {
-            throw Exception("次元城要登录才能播放：请在扩展设置里填写次元城的账号和密码，或在 WebView 中登录次元城")
-        }
+        preferences.edit().putString(PREF_LAST_ERROR, report.joinToString("\n")).apply()
         throw Exception(
-            "次元城登录失败，请截图回报：\n" + failures.joinToString("\n") +
-                "\n也可以在 WebView 中登录次元城后再试",
+            when {
+                gotToken -> "次元城登录成功，但播放地址被拒绝。完整原因见扩展设置“最近一次错误”"
+                hasAccount -> "次元城登录失败。完整原因见扩展设置“最近一次错误”"
+                else -> "次元城要登录才能播放：请在扩展设置填写账号密码，或在 WebView 中登录"
+            },
         )
+    }
+
+    /** Enough about a token to debug with, without revealing it. */
+    private fun describeToken(token: String): String {
+        val trimmed = token.trim()
+        val bare = Session.bareToken(trimmed).orEmpty()
+        val kind = when {
+            bare.count { it == '.' } == 2 -> "JWT"
+            bare.all { it.isLetterOrDigit() } -> "字母数字"
+            else -> "其他"
+        }
+        val prefix = if (bare.length != trimmed.length) "，带 Bearer 前缀" else ""
+        return "（$kind，${bare.length} 字符$prefix）"
     }
 
     private suspend fun login(backend: Backend, username: String, password: String): String {
@@ -323,7 +368,7 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
             put("password", password)
         }.toString().toRequestBody(JSON_MEDIA_TYPE)
         val result = api<LoginDto>(POST("${backend.apiUrl}/auth/login", backend.headers(), body))
-        return result.token?.trim()?.takeIf { it.isNotEmpty() } ?: throw Exception("没有返回登录凭证")
+        return result.token?.takeIf { it.isNotBlank() } ?: throw Exception("没有返回登录凭证")
     }
 
     private suspend fun webViewToken(): String? = withContext(Dispatchers.IO) {
@@ -395,7 +440,19 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
                 true
             }
         }.also(screen::addPreference)
+
+        // Read-only: shows the full report of the last failed playback, which toasts cut off.
+        EditTextPreference(screen.context).apply {
+            key = PREF_LAST_ERROR
+            title = "最近一次错误"
+            dialogTitle = title
+            summary = lastErrorSummary(preferences.getString(PREF_LAST_ERROR, null))
+            setOnPreferenceChangeListener { _, _ -> false }
+        }.also(screen::addPreference)
     }
+
+    private fun lastErrorSummary(error: String?) =
+        error?.ifBlank { null }?.let { "${it.lineSequence().first()}…（点此查看完整内容，可复制）" } ?: "无"
 
     private fun accountSummary(username: String?) =
         username?.trim()?.ifEmpty { null }?.let { "已填写：$it" } ?: "播放视频需要次元城账号（在网站或 App 注册）"
@@ -420,6 +477,7 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
         private const val PREF_USERNAME = "CYCITY_USERNAME"
         private const val PREF_PASSWORD = "CYCITY_PASSWORD"
         private const val PREF_TOKEN = "CYCITY_TOKEN"
+        private const val PREF_LAST_ERROR = "CYCITY_LAST_ERROR"
 
         private const val PAGE_SIZE = 30
         private const val MAX_PAGE_SIZE = 100
