@@ -9,6 +9,8 @@ class AnimeDto(
     val id: Long,
     val title: String,
     @SerialName("title_original") val titleOriginal: String? = null,
+    @SerialName("bangumi_id") val bangumiId: Long? = null,
+    @SerialName("release_date") val releaseDate: String? = null,
     val aliases: List<String>? = null,
     @SerialName("cover_url") val coverUrl: String? = null,
     val description: String? = null,

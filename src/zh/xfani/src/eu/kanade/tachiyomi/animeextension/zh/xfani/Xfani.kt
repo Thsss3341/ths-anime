@@ -14,6 +14,8 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.awaitSuccess
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -112,8 +114,24 @@ class Xfani : AnimeHttpSource(), ConfigurableAnimeSource {
         val url = "$apiUrl/rest/v1/animes?id=eq.$id&select=$ANIME_COLUMNS"
         val dto = client.newCall(GET(url, apiHeaders)).awaitSuccess().parse<List<AnimeDto>>().firstOrNull()
             ?: throw Exception("找不到这部动画")
-        return dto.toSAnime()
+        return dto.toSAnime().also { details ->
+            val language = TitleLanguage.from(preferences)
+            if (language.needsMal) language.applyTo(details, malTitle(dto))
+        }
     }
+
+    /** Looked up once per anime per session; null when there's no confident match. */
+    private suspend fun malTitle(dto: AnimeDto): MalTitle? {
+        malTitles[dto.id]?.let { return it.takeIf { it.malId != null } }
+        val otherNames = listOfNotNull(dto.titleOriginal) + dto.aliases.orEmpty().map { Parser.unescapeEntities(it, false) }
+        val mal = runCatching {
+            withContext(Dispatchers.IO) { MalMapper.find(client, dto.bangumiId, otherNames, dto.releaseDate) }
+        }.getOrElse { return null } // AniList unreachable: try again next time.
+        malTitles[dto.id] = mal ?: NO_MAL_TITLE
+        return mal
+    }
+
+    private val malTitles = ConcurrentHashMap<Long, MalTitle>()
 
     private fun AnimeDto.toSAnime() = SAnime.create().apply {
         url = "/anime/${this@toSAnime.id}"
@@ -227,6 +245,8 @@ class Xfani : AnimeHttpSource(), ConfigurableAnimeSource {
             setDefaultValue(DEFAULT_VIDEO_SOURCE)
             summary = "当前选择：%s"
         }.also(screen::addPreference)
+
+        TitleLanguage.preference(screen.context, preferences).also(screen::addPreference)
     }
 
     private val selectedVideoSource: Int
@@ -308,10 +328,13 @@ class Xfani : AnimeHttpSource(), ConfigurableAnimeSource {
         /** The publishable key the website itself ships to every browser. */
         private const val API_KEY = "sb_publishable_OBIVAWACIX6lPXrO98_z24_HcsmalkA"
 
+        private val NO_MAL_TITLE = MalTitle(null, null, null)
+
         private const val PAGE_SIZE = 30
         private const val SORT_BY_VIEWS = 1
         private const val ANIME_COLUMNS =
-            "id,title,title_original,aliases,cover_url,description,director,actors,meta_tags,is_finished"
+            "id,title,title_original,aliases,cover_url,description,director,actors,meta_tags,is_finished," +
+                "bangumi_id,release_date"
 
         // Same key and values as yuzono's build (0 = 主线-1, 1 = 主线-2, 2 = 备用-1), so the choice carries over.
         private const val PREF_KEY_VIDEO_SOURCE = "PREF_KEY_VIDEO_SOURCE"

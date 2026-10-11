@@ -47,6 +47,8 @@ class VideoDetailDto(
     @SerialName("cover_url") val coverUrl: String? = null,
     val subtitle: String? = null,
     @SerialName("english_title") val englishTitle: String? = null,
+    @SerialName("bangumi_id") val bangumiId: Long? = null,
+    @SerialName("publish_date") val publishDate: String? = null,
     val director: List<String> = emptyList(),
     val writer: String? = null,
     val year: Int? = null,

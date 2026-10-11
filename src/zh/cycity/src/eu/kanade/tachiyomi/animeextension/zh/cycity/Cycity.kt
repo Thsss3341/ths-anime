@@ -134,7 +134,29 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
 
     // ============================== Details =============================
 
-    override suspend fun getAnimeDetails(anime: SAnime): SAnime = videoDetail(anime).toSAnime()
+    override suspend fun getAnimeDetails(anime: SAnime): SAnime {
+        val detail = videoDetail(anime)
+        return detail.toSAnime().also { details ->
+            val language = TitleLanguage.from(preferences)
+            if (language.needsMal) language.applyTo(details, malTitle(detail))
+        }
+    }
+
+    /** Looked up once per anime per session; null when there's no confident match. */
+    private suspend fun malTitle(detail: VideoDetailDto): MalTitle? {
+        malTitles[detail.id]?.let { return it.takeIf { it.malId != null } }
+        val otherNames = listOfNotNull(detail.subtitle, detail.englishTitle)
+            .flatMap { it.split('、') }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        val mal = runCatching {
+            withContext(Dispatchers.IO) { MalMapper.find(client, detail.bangumiId, otherNames, detail.publishDate) }
+        }.getOrElse { return null } // AniList unreachable: try again next time.
+        malTitles[detail.id] = mal ?: NO_MAL_TITLE
+        return mal
+    }
+
+    private val malTitles = ConcurrentHashMap<Long, MalTitle>()
 
     private suspend fun videoDetail(anime: SAnime): VideoDetailDto =
         api(GET("$apiUrl/videos/${resolveId(anime)}", headers))
@@ -163,17 +185,17 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
      */
     private suspend fun resolveId(anime: SAnime): Long {
         ANIME_PATH_REGEX.find(anime.url)?.let { return it.groupValues[1].toLong() }
-        legacyIds[anime.url]?.let { return it }
+        // Saved, because with a MAL title option the stored title may stop matching the site's.
+        val legacyKey = PREF_LEGACY_ID_PREFIX + anime.url
+        preferences.getLong(legacyKey, 0L).takeIf { it > 0 }?.let { return it }
         val results = api<ListDto<VideoCardDto>>(GET(searchUrl(anime.title, 1, 20), headers)).list
         val wanted = anime.title.normalized()
         val match = results.firstOrNull { it.title == anime.title }
             ?: results.firstOrNull { it.title.normalized() == wanted }
             ?: throw Exception("新版次元城找不到「${anime.title}」，请重新搜索并加入书架")
-        legacyIds[anime.url] = match.id
+        preferences.edit().putLong(legacyKey, match.id).apply()
         return match.id
     }
-
-    private val legacyIds = ConcurrentHashMap<String, Long>()
 
     private fun String.normalized() = replace(NON_WORD_REGEX, "").lowercase()
 
@@ -414,6 +436,8 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
             setDefaultValue(false)
         }.also(screen::addPreference)
 
+        TitleLanguage.preference(screen.context, preferences).also(screen::addPreference)
+
         EditTextPreference(screen.context).apply {
             key = PREF_USERNAME
             title = "次元城账号"
@@ -478,6 +502,8 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
         private const val PREF_PASSWORD = "CYCITY_PASSWORD"
         private const val PREF_TOKEN = "CYCITY_TOKEN"
         private const val PREF_LAST_ERROR = "CYCITY_LAST_ERROR"
+        private const val PREF_LEGACY_ID_PREFIX = "CYCITY_LEGACY_ID:"
+        private val NO_MAL_TITLE = MalTitle(null, null, null)
 
         private const val PAGE_SIZE = 30
         private const val MAX_PAGE_SIZE = 100
