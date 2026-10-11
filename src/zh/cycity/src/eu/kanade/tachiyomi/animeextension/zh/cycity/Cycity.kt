@@ -16,6 +16,8 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.await
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -214,52 +216,118 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
     override suspend fun getVideoList(episode: SEpisode): List<Video> {
         val sectionId = (baseUrl + episode.url).toHttpUrl().queryParameter("section")
             ?: throw Exception("这一集来自旧版网站，请在动画页面下拉刷新集数列表")
-        val play = withLogin { token ->
-            api<PlayUrlDto>(GET("$apiUrl/v2/sections/$sectionId/play-url", authHeaders(token)))
+        val play = withLogin { session ->
+            val url = "${session.backend.apiUrl}/v2/sections/$sectionId/play-url"
+            api<PlayUrlDto>(GET(url, session.backend.headers(session.token)))
         }
         val url = play.url?.takeIf { it.isNotBlank() } ?: throw Exception("找不到视频")
         return listOf(Video(url, play.name?.ifBlank { null } ?: "默认", url, videoHeaders))
     }
 
-    private fun authHeaders(token: String) = headers.newBuilder().set("Authorization", "Bearer $token").build()
+    /**
+     * Where to log in and fetch play URLs. Logging in exactly like the website does comes first;
+     * the official app's address is the fallback (for example when the website blocks a network).
+     */
+    private enum class Backend(val apiUrl: String, val label: String) {
+        WEBSITE("https://www.cycani.org/api", "网站"),
+        APP("https://mapi.cycback.org", "App"),
+    }
 
-    /** Runs [block] with a login token, logging in again once if the saved token was rejected. */
-    private suspend fun <T> withLogin(block: suspend (String) -> T): T {
-        val saved = preferences.getString(PREF_TOKEN, null)
-        if (!saved.isNullOrBlank()) {
+    private fun Backend.headers(token: String? = null): Headers = headers.newBuilder().apply {
+        when (this@headers) {
+            Backend.WEBSITE -> {
+                set("X-App-Name", "cyc_web")
+                set("X-App-Version", "cycweb")
+                set("Origin", baseUrl)
+                set("Referer", "$baseUrl/")
+            }
+            Backend.APP -> {
+                set("X-App-Name", "cyc_android")
+                removeAll("X-App-Version")
+            }
+        }
+        if (token != null) set("Authorization", "Bearer $token")
+    }.build()
+
+    private class Session(val backend: Backend, val token: String) {
+        override fun toString() = "${backend.name}:$token"
+
+        companion object {
+            fun parse(saved: String?): Session? {
+                val backend = saved?.substringBefore(':')?.let { name -> Backend.entries.firstOrNull { it.name == name } }
+                val token = saved?.substringAfter(':', "")?.ifBlank { null }
+                return if (backend != null && token != null) Session(backend, token) else null
+            }
+        }
+    }
+
+    /**
+     * Runs [block] with a logged-in session: the saved one, else a fresh login with the account
+     * from the settings, else the login saved by the website in WebView. Each new session is only
+     * kept once [block] accepts it.
+     */
+    private suspend fun <T> withLogin(block: suspend (Session) -> T): T {
+        Session.parse(preferences.getString(PREF_TOKEN, null))?.let { saved ->
             try {
                 return block(saved)
             } catch (e: ApiException) {
                 if (!e.isAuthError) throw e.forPlayback()
             }
         }
-        val token = login()
-        try {
-            return block(token)
-        } catch (e: ApiException) {
-            throw e.forPlayback()
-        }
-    }
-
-    private suspend fun login(): String {
         preferences.edit().remove(PREF_TOKEN).apply()
+
+        val failures = mutableListOf<String>()
         val username = preferences.getString(PREF_USERNAME, null)?.trim().orEmpty()
         val password = preferences.getString(PREF_PASSWORD, null).orEmpty()
-        if (username.isEmpty() || password.isEmpty()) {
-            throw Exception("次元城要登录才能播放：请在扩展设置里填写次元城的账号和密码")
+        val hasAccount = username.isNotEmpty() && password.isNotEmpty()
+
+        suspend fun attempt(label: String, getSession: suspend () -> Session?): T? {
+            val session = try {
+                getSession() ?: return null
+            } catch (e: Exception) {
+                failures += "$label：${e.message}"
+                return null
+            }
+            return try {
+                block(session).also { preferences.edit().putString(PREF_TOKEN, session.toString()).apply() }
+            } catch (e: ApiException) {
+                if (!e.isAuthError) throw e.forPlayback()
+                failures += "$label：登录后仍被拒绝（${e.message}）"
+                null
+            } catch (e: Exception) {
+                failures += "$label：登录成功，但读取视频失败（${e.message}）"
+                null
+            }
         }
+
+        if (hasAccount) {
+            for (backend in Backend.entries) {
+                attempt("${backend.label}登录") { Session(backend, login(backend, username, password)) }
+                    ?.let { return it }
+            }
+        }
+        attempt("WebView 登录") { webViewToken()?.let { Session(Backend.WEBSITE, it) } }?.let { return it }
+
+        if (!hasAccount && failures.isEmpty()) {
+            throw Exception("次元城要登录才能播放：请在扩展设置里填写次元城的账号和密码，或在 WebView 中登录次元城")
+        }
+        throw Exception(
+            "次元城登录失败，请截图回报：\n" + failures.joinToString("\n") +
+                "\n也可以在 WebView 中登录次元城后再试",
+        )
+    }
+
+    private suspend fun login(backend: Backend, username: String, password: String): String {
         val body = buildJsonObject {
             put("username", username)
             put("password", password)
         }.toString().toRequestBody(JSON_MEDIA_TYPE)
-        val result = try {
-            api<LoginDto>(POST("$apiUrl/auth/login", headers, body))
-        } catch (e: ApiException) {
-            throw Exception("次元城登录失败：${e.message}")
-        }
-        val token = result.token?.takeIf { it.isNotBlank() } ?: throw Exception("次元城登录失败")
-        preferences.edit().putString(PREF_TOKEN, token).apply()
-        return token
+        val result = api<LoginDto>(POST("${backend.apiUrl}/auth/login", backend.headers(), body))
+        return result.token?.trim()?.takeIf { it.isNotEmpty() } ?: throw Exception("没有返回登录凭证")
+    }
+
+    private suspend fun webViewToken(): String? = withContext(Dispatchers.IO) {
+        WebViewSession("$baseUrl/", DESKTOP_USER_AGENT).readToken()
     }
 
     private fun ApiException.forPlayback(): Exception = when {
@@ -282,11 +350,11 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
             json.decodeFromString<ApiResponse<T>>(body)
         } catch (e: Exception) {
             if (response.code == 429) throw ApiException(429, "HTTP 429")
-            throw Exception("次元城服务暂时不可用（HTTP ${response.code}）")
+            throw Exception("次元城服务暂时不可用（HTTP ${response.code}${response.request.url.host.let { "，$it" }}）")
         }
         if (result.code != 0) {
             val code = if (result.code == -1) response.code else result.code
-            throw ApiException(code, result.msg?.trim()?.ifEmpty { null } ?: "HTTP ${response.code}")
+            throw ApiException(code, "${result.msg?.trim()?.ifEmpty { null } ?: "请求失败"}（代码 $code）")
         }
         return result.data ?: throw Exception("次元城没有返回数据")
     }

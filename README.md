@@ -114,6 +114,9 @@ Open them from **Browse → Extensions**, then the extension's settings icon.
 | **次元城账号** | Your 次元城 username. Needed to play videos. | Empty |
 | **次元城密码** | Your 次元城 password. Stored only in the app on your phone. | Empty |
 
+Instead of entering your account, you can also log in to 次元城 in the extension's WebView; the
+extension then uses that login.
+
 ## Tracking with MyAnimeList
 
 This section is about **Anime1.me**. anime1's titles are in Chinese, which MyAnimeList's search can't find. Set
@@ -190,7 +193,10 @@ install Cycity from this repository ([Install](#install)).
 
 **Cycity: "次元城要登录才能播放" or "次元城登录失败"**<br>
 Enter your 次元城 username and password in the extension's settings. If you don't have an account,
-register on [cycani.org](https://www.cycani.org) or in the 次元城 app.
+register on [cycani.org](https://www.cycani.org) or in the 次元城 app. If logging in from the
+extension still fails, open the extension's WebView (the globe icon), log in to 次元城 there, and
+play the episode again: the extension uses that login too. If it still fails, send a screenshot of
+the error; it lists why each login attempt failed.
 
 **Cycity: "播放太频繁"**<br>
 次元城 limits how many videos an account can open in a short time. Wait a while and try again.
