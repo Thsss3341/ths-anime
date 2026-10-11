@@ -2,11 +2,11 @@ package eu.kanade.tachiyomi.animeextension.zh.cycity
 
 import android.app.Application
 import android.content.SharedPreferences
-import android.util.Base64
+import android.text.InputType
+import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
-import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -15,32 +15,29 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.network.await
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import okhttp3.Headers
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
-import org.jsoup.nodes.Document
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.io.IOException
-import java.net.URLDecoder
-import java.security.MessageDigest
 import java.util.Calendar
-import javax.crypto.Cipher
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 次元城动漫. Based on yuzono's Cycity extension.
+ * 次元城动漫. The site was rebuilt in 2026 as a JavaScript app: every page, old or new, is now the
+ * same empty shell that loads its content from a JSON API, so the HTML the yuzono extension parsed
+ * no longer exists. This source talks to that API directly (the one the official app uses).
  *
- * The site now turns away Android devices on its website ("请使用 Android APP", HTTP 405) to push
- * its own app, and the app's default User-Agent is an Android one. Every request here, including
- * the video parser's and WebView's, goes out as desktop Chrome instead.
+ * Browsing, search, details and episode lists work without an account. Play URLs require a logged-in
+ * 次元城 account, the same as in the official app, so playback uses the credentials from the settings.
  */
 class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
     // Keep name/lang identical to yuzono's Cycity so the source ID (and library entries) stay the same.
@@ -49,9 +46,13 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
     override val lang = "zh"
     override val supportsLatest = true
 
-    private val apiUrl = "$baseUrl/index.php/ds_api"
+    private val apiUrl = "https://mapi.cycback.org"
 
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -59,63 +60,238 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
 
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", DESKTOP_USER_AGENT)
-        .set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-        .set("Accept-Language", "zh-CN,zh;q=0.9")
-        .set("Referer", "$baseUrl/")
+        .set("Accept", "application/json")
+        .set("X-App-Name", "cyc_web")
+        .set("X-App-Version", "cycweb")
+        .set("X-Time-Zone", "Asia/Shanghai")
 
-    // Also covers requests built without the source's headers, which would otherwise get the
-    // app's default (Android) User-Agent.
-    override val client: OkHttpClient = network.client.newBuilder()
-        .addInterceptor { chain ->
-            val request = chain.request().newBuilder().header("User-Agent", DESKTOP_USER_AGENT).build()
-            chain.proceed(request)
+    private val videoHeaders: Headers by lazy {
+        Headers.Builder()
+            .set("User-Agent", DESKTOP_USER_AGENT)
+            .set("Referer", "$baseUrl/")
+            .build()
+    }
+
+    // ============================== Browse ==============================
+
+    override suspend fun getPopularAnime(page: Int): AnimesPage =
+        if (preferences.getBoolean(POPULAR_PREF, false)) {
+            weekdaySchedule()
+        } else {
+            listVideos(page, AnimeFilterList(SortFilter(state = SORT_BY_HITS)))
         }
-        .addInterceptor(::explainRefusal)
-        .addInterceptor(::renderLoaderPages)
-        .build()
 
-    private val renderer by lazy { WebViewRenderer(DESKTOP_USER_AGENT) }
+    override suspend fun getLatestUpdates(page: Int): AnimesPage =
+        listVideos(page, AnimeFilterList(SortFilter(state = SORT_BY_UPDATE)))
+
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
+        if (query.isBlank()) return listVideos(page, filters)
+        return api<ListDto<VideoCardDto>>(GET(searchUrl(query.trim(), page, PAGE_SIZE), headers)).toAnimesPage()
+    }
+
+    override fun getFilterList() = AnimeFilterList(ZoneFilter(), SortFilter(), TagFilter(), YearFilter())
+
+    private suspend fun listVideos(page: Int, filters: AnimeFilterList): AnimesPage {
+        val url = "$apiUrl/videos".toHttpUrl().newBuilder()
+            .addQueryParameter("zone_id", filters.selected<ZoneFilter>() ?: DEFAULT_ZONE)
+            .addQueryParameter("page", "$page")
+            .addQueryParameter("page_size", "$PAGE_SIZE")
+            .addQueryParameter("order_by", filters.selected<SortFilter>() ?: "update_time")
+        filters.selected<TagFilter>()?.let { url.addQueryParameter("tag", it) }
+        filters.selected<YearFilter>()?.let { url.addQueryParameter("year", it) }
+        return api<ListDto<VideoCardDto>>(GET(url.build(), headers)).toAnimesPage()
+    }
+
+    private inline fun <reified T : QueryFilter> AnimeFilterList.selected() =
+        filterIsInstance<T>().firstOrNull()?.selected
+
+    private fun searchUrl(query: String, page: Int, pageSize: Int): HttpUrl =
+        "$apiUrl/videos/search".toHttpUrl().newBuilder()
+            .addQueryParameter("q", query)
+            .addQueryParameter("page", "$page")
+            .addQueryParameter("page_size", "$pageSize")
+            .build()
+
+    /** Today's entries of the airing schedule (周一 = 1 … 周日 = 7). */
+    private suspend fun weekdaySchedule(): AnimesPage {
+        val today = (Calendar.getInstance().get(Calendar.DAY_OF_WEEK) + 5) % 7 + 1
+        val url = "$apiUrl/index/weekday?weekday=$today"
+        val days = api<ListDto<WeekdayDto>>(GET(url, headers)).list
+        val videos = days.firstOrNull { it.weekday == today }?.videos.orEmpty()
+        return AnimesPage(videos.map { it.toSAnime() }, false)
+    }
+
+    private fun ListDto<VideoCardDto>.toAnimesPage() =
+        AnimesPage(list.map { it.toSAnime() }, pager?.hasNextPage == true)
+
+    private fun VideoCardDto.toSAnime() = SAnime.create().apply {
+        url = "/anime/${this@toSAnime.id}"
+        title = this@toSAnime.title
+        thumbnail_url = coverUrl
+    }
+
+    // ============================== Details =============================
+
+    override suspend fun getAnimeDetails(anime: SAnime): SAnime = videoDetail(anime).toSAnime()
+
+    private suspend fun videoDetail(anime: SAnime): VideoDetailDto =
+        api(GET("$apiUrl/videos/${resolveId(anime)}", headers))
+
+    private fun VideoDetailDto.toSAnime() = SAnime.create().apply {
+        url = "/anime/${this@toSAnime.id}"
+        title = this@toSAnime.title
+        thumbnail_url = coverUrl
+        author = director.joinToString().ifEmpty { null }
+        artist = writer?.ifBlank { null }
+        genre = tags.joinToString().ifEmpty { null }
+        status = if (completed) SAnime.COMPLETED else SAnime.ONGOING
+        description = buildString {
+            append(this@toSAnime.description.orEmpty().replace("\r\n", "\n").trim())
+            val otherNames = listOfNotNull(subtitle, englishTitle).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            if (otherNames.isNotEmpty()) {
+                if (isNotEmpty()) append("\n\n")
+                append("别名：").append(otherNames.joinToString(" / "))
+            }
+        }.ifEmpty { null }
+    }
 
     /**
-     * The site answers some requests with a ~1.5 KB loader page that only builds the real page
-     * with JavaScript (it shows fine in WebView, but has no content as raw HTML). Render those in
-     * an off-screen WebView and hand the finished HTML to the parsers instead.
+     * Anime saved before the site's rebuild have URLs like "/bangumi/6017.html", whose IDs the new
+     * site doesn't use. Find them again by title.
      */
-    private fun renderLoaderPages(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        val response = chain.proceed(request)
-        if (request.method != "GET" || request.url.host != baseUrl.toHttpUrl().host) return response
-        if (response.header("Content-Type")?.startsWith("text/html") != true) return response
-        val body = response.peekBody(LOADER_MAX_SIZE.toLong()).string()
-        if (!body.isLoaderPage()) return response
-
-        val rendered = renderer.render(request.url.toString(), mapOf("Referer" to "$baseUrl/")) { it.hasContent() }
-        // Keep the loader page when rendering fails, so the parse error describes it.
-        if (rendered == null || !rendered.hasContent()) return response
-        response.close()
-        return response.newBuilder().body(rendered.toResponseBody(HTML_MEDIA_TYPE)).build()
+    private suspend fun resolveId(anime: SAnime): Long {
+        ANIME_PATH_REGEX.find(anime.url)?.let { return it.groupValues[1].toLong() }
+        legacyIds[anime.url]?.let { return it }
+        val results = api<ListDto<VideoCardDto>>(GET(searchUrl(anime.title, 1, 20), headers)).list
+        val wanted = anime.title.normalized()
+        val match = results.firstOrNull { it.title == anime.title }
+            ?: results.firstOrNull { it.title.normalized() == wanted }
+            ?: throw Exception("新版次元城找不到「${anime.title}」，请重新搜索并加入书架")
+        legacyIds[anime.url] = match.id
+        return match.id
     }
 
-    private fun String.hasContent() = "/bangumi/" in this || "player_aaaa" in this
+    private val legacyIds = ConcurrentHashMap<String, Long>()
 
-    private fun String.isLoaderPage() = length < LOADER_MAX_SIZE && !hasContent()
+    private fun String.normalized() = replace(NON_WORD_REGEX, "").lowercase()
 
-    /** Turns the site's refusals into messages that say which request failed and why. */
-    private fun explainRefusal(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        val response = chain.proceed(request)
-        if (response.code != 405) return response
-        val body = response.peekBody(64 * 1024).string()
-        response.close()
-        val what = "${request.method} ${request.url.encodedPath}"
-        throw IOException(
-            if ("Android" in body) {
-                "网站把请求当成 Android 设备而拒绝（HTTP 405，$what）"
-            } else {
-                "网站拒绝了这个请求（HTTP 405，$what）"
-            },
-        )
+    // ============================= Episodes =============================
+
+    override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> {
+        val detail = videoDetail(anime)
+        val sources = detail.playFrom
+        return sources.flatMap { source ->
+            sections(detail.id, source.code).mapIndexed { index, section ->
+                SEpisode.create().apply {
+                    url = "/anime/${detail.id}/play/${index + 1}?section=${section.id}"
+                    name = section.title
+                    episode_number = EPISODE_NUMBER_REGEX.find(section.title)?.value?.toFloatOrNull()
+                        ?: (index + 1).toFloat()
+                    if (sources.size > 1) scanlator = source.title?.ifBlank { null } ?: source.code
+                }
+            }
+        }.reversed()
     }
+
+    private suspend fun sections(videoId: Long, playerCode: String): List<SectionDto> {
+        val all = mutableListOf<SectionDto>()
+        var page = 1
+        while (true) {
+            val url = "$apiUrl/videos/$videoId/sections".toHttpUrl().newBuilder()
+                .addQueryParameter("player_code", playerCode)
+                .addQueryParameter("page", "$page")
+                .addQueryParameter("page_size", "$MAX_PAGE_SIZE")
+                .build()
+            val result = api<ListDto<SectionDto>>(GET(url, headers))
+            all += result.list
+            if (result.list.isEmpty() || result.pager?.hasNextPage != true) return all
+            page++
+        }
+    }
+
+    // =============================== Video ==============================
+
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
+        val sectionId = (baseUrl + episode.url).toHttpUrl().queryParameter("section")
+            ?: throw Exception("这一集来自旧版网站，请在动画页面下拉刷新集数列表")
+        val play = withLogin { token ->
+            api<PlayUrlDto>(GET("$apiUrl/v2/sections/$sectionId/play-url", authHeaders(token)))
+        }
+        val url = play.url?.takeIf { it.isNotBlank() } ?: throw Exception("找不到视频")
+        return listOf(Video(url, play.name?.ifBlank { null } ?: "默认", url, videoHeaders))
+    }
+
+    private fun authHeaders(token: String) = headers.newBuilder().set("Authorization", "Bearer $token").build()
+
+    /** Runs [block] with a login token, logging in again once if the saved token was rejected. */
+    private suspend fun <T> withLogin(block: suspend (String) -> T): T {
+        val saved = preferences.getString(PREF_TOKEN, null)
+        if (!saved.isNullOrBlank()) {
+            try {
+                return block(saved)
+            } catch (e: ApiException) {
+                if (!e.isAuthError) throw e.forPlayback()
+            }
+        }
+        val token = login()
+        try {
+            return block(token)
+        } catch (e: ApiException) {
+            throw e.forPlayback()
+        }
+    }
+
+    private suspend fun login(): String {
+        preferences.edit().remove(PREF_TOKEN).apply()
+        val username = preferences.getString(PREF_USERNAME, null)?.trim().orEmpty()
+        val password = preferences.getString(PREF_PASSWORD, null).orEmpty()
+        if (username.isEmpty() || password.isEmpty()) {
+            throw Exception("次元城要登录才能播放：请在扩展设置里填写次元城的账号和密码")
+        }
+        val body = buildJsonObject {
+            put("username", username)
+            put("password", password)
+        }.toString().toRequestBody(JSON_MEDIA_TYPE)
+        val result = try {
+            api<LoginDto>(POST("$apiUrl/auth/login", headers, body))
+        } catch (e: ApiException) {
+            throw Exception("次元城登录失败：${e.message}")
+        }
+        val token = result.token?.takeIf { it.isNotBlank() } ?: throw Exception("次元城登录失败")
+        preferences.edit().putString(PREF_TOKEN, token).apply()
+        return token
+    }
+
+    private fun ApiException.forPlayback(): Exception = when {
+        isAuthError -> Exception("次元城登录失效，请检查扩展设置里的账号和密码")
+        code == 429 -> Exception("播放太频繁，次元城暂时限制了这个账号，请稍后再试")
+        else -> this
+    }
+
+    // ================================ API ===============================
+
+    private class ApiException(val code: Int, message: String) : Exception(message) {
+        // 401: not logged in; 1001/1002: the token expired or was replaced by a newer login.
+        val isAuthError get() = code == 401 || code == 1001 || code == 1002
+    }
+
+    private suspend inline fun <reified T> api(request: Request): T {
+        val response = client.newCall(request).await()
+        val body = response.body.string()
+        val result = try {
+            json.decodeFromString<ApiResponse<T>>(body)
+        } catch (e: Exception) {
+            if (response.code == 429) throw ApiException(429, "HTTP 429")
+            throw Exception("次元城服务暂时不可用（HTTP ${response.code}）")
+        }
+        if (result.code != 0) {
+            val code = if (result.code == -1) response.code else result.code
+            throw ApiException(code, result.msg?.trim()?.ifEmpty { null } ?: "HTTP ${response.code}")
+        }
+        return result.data ?: throw Exception("次元城没有返回数据")
+    }
+
+    // ============================= Settings =============================
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         SwitchPreferenceCompat(screen.context).apply {
@@ -124,274 +300,69 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
             summary = "开启后，“热门”内容会显示当天应该更新的动画，但不一定更新"
             setDefaultValue(false)
         }.also(screen::addPreference)
-    }
 
-    /**
-     * JavaScript implementation:
-     *
-     * function decrypt(src, key1, key2) {
-     *     let prefix = new Array(key2.length);
-     *     for (let i = 0; i < key2.length; i++) {
-     *       prefix[key1[i]] = key2[i];
-     *     }
-     *     let a = CryptoJS.MD5(prefix.join("") + "YLwJVbXw77pk2eOrAnFdBo2c3mWkLtodMni2wk81GCnP94ZltW").toString(),
-     *       key = CryptoJS.enc.Utf8.parse(a.substring(16)),
-     *       iv = CryptoJS.enc.Utf8.parse(a.substring(0, 16)),
-     *       dec = CryptoJS.AES.decrypt(src, key, {
-     *         iv: iv,
-     *         mode: CryptoJS.mode.CBC,
-     *         padding: CryptoJS.pad.Pkcs7,
-     *       });
-     *     return dec.toString(CryptoJS.enc.Utf8);
-     * }
-     */
-    private fun decrypt(url: String, k1: String, k2: String): String {
-        val prefix = CharArray(k2.length)
-        k1.indices.forEach { prefix[k1[it] - '0'] = k2[it] }
-        val txt = "${prefix.joinToString("")}YLwJVbXw77pk2eOrAnFdBo2c3mWkLtodMni2wk81GCnP94ZltW"
-        val a = MessageDigest.getInstance("MD5").digest(txt.toByteArray()).joinToString("") { "%02x".format(it) }
-        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            SecretKeySpec(a.substring(16).toByteArray(Charsets.UTF_8), "AES"),
-            IvParameterSpec(a.take(16).toByteArray(Charsets.UTF_8)),
-        )
-        return cipher.doFinal(Base64.decode(url, Base64.DEFAULT)).toString(Charsets.UTF_8)
-    }
-
-    // https://www.cycani.org/show/20/by/time/class/%E6%BC%AB%E7%94%BB%E6%94%B9/page/2/year/2024.html
-    private fun vodListRequest(by: String, page: Int): Request {
-        val url = baseUrl.toHttpUrl().newBuilder()
-            .addPathSegments("show/20/by/$by")
-            .addPathSegments("page/$page.html")
-        return GET(url.build(), headers)
-    }
-
-    private fun vodListParse(response: Response) = response.asJsoup().let { doc ->
-        val list = doc.select(".public-list-box").mapNotNull {
-            val link = it.selectFirst(".public-list-button a") ?: return@mapNotNull null
-            SAnime.create().apply {
-                thumbnail_url = it.selectFirst("img")?.attr("data-src")
-                title = link.text()
-                setUrlWithoutDomain(link.absUrl("href"))
+        EditTextPreference(screen.context).apply {
+            key = PREF_USERNAME
+            title = "次元城账号"
+            dialogTitle = title
+            summary = accountSummary(preferences.getString(PREF_USERNAME, null))
+            setOnPreferenceChangeListener { _, newValue ->
+                summary = accountSummary(newValue as? String)
+                preferences.edit().remove(PREF_TOKEN).apply()
+                true
             }
-        }.ifEmpty { doc.animeLinks(response) }
-        AnimesPage(list, doc.hasNextPage())
-    }
+        }.also(screen::addPreference)
 
-    /**
-     * Fallback for when the site renames its CSS classes: every link to an anime page
-     * ("/bangumi/<id>.html"), with its title and cover. If there are none, the page isn't what
-     * this extension understands, so fail with a description of it instead of showing nothing.
-     */
-    private fun Document.animeLinks(response: Response): List<SAnime> {
-        val found = LinkedHashMap<String, SAnime>()
-        for (link in select("a[href*=/bangumi/]")) {
-            val path = BANGUMI_PATH_REGEX.find(link.attr("href"))?.value ?: continue
-            val img = link.selectFirst("img") ?: link.parent()?.selectFirst("img")
-            val cover = img?.let { i ->
-                listOf("data-src", "data-original", "src").map { i.absUrl(it) }.firstOrNull { it.isNotBlank() }
+        EditTextPreference(screen.context).apply {
+            key = PREF_PASSWORD
+            title = "次元城密码"
+            dialogTitle = title
+            summary = passwordSummary(preferences.getString(PREF_PASSWORD, null))
+            setOnBindEditTextListener {
+                it.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             }
-            val existing = found[path]
-            if (existing != null) {
-                if (existing.thumbnail_url.isNullOrBlank()) existing.thumbnail_url = cover
-                continue
+            setOnPreferenceChangeListener { _, newValue ->
+                summary = passwordSummary(newValue as? String)
+                preferences.edit().remove(PREF_TOKEN).apply()
+                true
             }
-            val title = link.attr("title").ifBlank { img?.attr("alt").orEmpty() }.ifBlank { link.text() }.trim()
-            if (title.isEmpty()) continue
-            found[path] = SAnime.create().apply {
-                url = path
-                this.title = title
-                thumbnail_url = cover
-            }
-        }
-        if (found.isEmpty() && !text().contains("暂无")) throw Exception(describePage(response))
-        return found.values.toList()
+        }.also(screen::addPreference)
     }
 
-    /** A short description of an unexpected page, to screenshot and report. */
-    private fun Document.describePage(response: Response): String {
-        val html = outerHtml()
-        val classes = select("[class]").flatMap { it.classNames() }
-            .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(10)
-            .joinToString(" ") { it.key }
-        val markers = listOf("__NEXT_DATA__", "__NUXT__", "player_aaaa", "/bangumi/", "/play/", "api.php", "ds_api")
-            .filter { it in html }.joinToString(" ").ifEmpty { "无" }
-        return buildString {
-            appendLine("无法解析页面，请截图回报：")
-            appendLine("HTTP ${response.code} ${response.request.url.encodedPath}")
-            appendLine("标题：${title().take(40)}")
-            appendLine("大小：${html.length}")
-            appendLine("标记：$markers")
-            appendLine("样式：$classes")
-            appendLine("内容：${body()?.text()?.take(80).orEmpty()}")
-            append("源码：${html.replace(WHITESPACE_REGEX, " ").take(900)}")
-        }
-    }
+    private fun accountSummary(username: String?) =
+        username?.trim()?.ifEmpty { null }?.let { "已填写：$it" } ?: "播放视频需要次元城账号（在网站或 App 注册）"
 
-    private fun Document.hasNextPage(): Boolean {
-        val pages = selectFirst(".page-tip")?.text()?.substringAfter("当前")?.substringBefore("页")?.split("/")
-        return pages != null && pages.getOrNull(0) != pages.getOrNull(1)
-    }
+    private fun passwordSummary(password: String?) = if (password.isNullOrEmpty()) "未填写" else "已填写"
 
-    private fun weeklyScheduleRequest(): Request {
-        val weekday = when (Calendar.getInstance().get(Calendar.DAY_OF_WEEK)) {
-            Calendar.MONDAY -> "一"
-            Calendar.TUESDAY -> "二"
-            Calendar.WEDNESDAY -> "三"
-            Calendar.THURSDAY -> "四"
-            Calendar.FRIDAY -> "五"
-            Calendar.SATURDAY -> "六"
-            Calendar.SUNDAY -> "日"
-            else -> ""
-        }
-        val url = "$apiUrl/weekday".toHttpUrl().newBuilder().addQueryParameter("weekday", weekday)
-        return POST(url.build().toString(), headers)
-    }
+    // ============================== Unused ==============================
 
-    private fun weeklyScheduleParse(response: Response): AnimesPage {
-        val data = json.decodeFromString<VodResponse>(response.body.string())
-        return AnimesPage(data.list.map(VodInfo::toSAnime), false)
-    }
-
-    // Latest Updates ==============================================================================
-
-    override fun latestUpdatesRequest(page: Int) = vodListRequest("time", page)
-
-    override fun latestUpdatesParse(response: Response) = vodListParse(response)
-
-    // Popular Anime ===============================================================================
-
-    override fun popularAnimeRequest(page: Int): Request {
-        val switch = preferences.getBoolean(POPULAR_PREF, false)
-        return if (switch) weeklyScheduleRequest() else vodListRequest("hits", page)
-    }
-
-    override fun popularAnimeParse(response: Response): AnimesPage {
-        if (response.header("Content-Type")?.startsWith("text/html") == true) {
-            return vodListParse(response)
-        }
-        return weeklyScheduleParse(response)
-    }
-
-    // Search Anime ================================================================================
-
-    override fun getFilterList() = AnimeFilterList(
-        AnimeFilter.Header("筛选条件（关键字搜索时无效）"),
-        TypeFilter(),
-        ClassFilter(),
-        YearFilter(),
-    )
-
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        val activeFilters = filters.ifEmpty { getFilterList() }
-        val url = baseUrl.toHttpUrl().newBuilder()
-        if (query.isNotBlank()) {
-            url.addPathSegments("search/wd").addPathSegment(query)
-        } else {
-            activeFilters.filterIsInstance<TypeFilter>().firstOrNull()?.let {
-                url.addPathSegments("show/$it")
-            }
-            activeFilters.filterIsInstance<ClassFilter>().firstOrNull()?.let {
-                val classFilter = it.toString()
-                if (classFilter != "全部") url.addPathSegment("class").addPathSegment(classFilter)
-            }
-            activeFilters.filterIsInstance<YearFilter>().firstOrNull()?.let {
-                val year = it.toString()
-                if (year != "全部") url.addPathSegments("year/$year")
-            }
-        }
-        url.addPathSegments("page/$page.html")
-        return GET(url.build(), headers)
-    }
-
-    override fun searchAnimeParse(response: Response): AnimesPage {
-        if (response.request.url.pathSegments.contains("search")) {
-            val document = response.asJsoup()
-            document.selectFirst(".ft6")?.let { throw Exception("请在 WebView 中输入验证码") }
-            val animeList = document.select(".search-list").map { item ->
-                SAnime.create().apply {
-                    setUrlWithoutDomain(item.select(".detail-info > a").attr("href"))
-                    item.selectFirst(".detail-pic img[data-src]")?.let {
-                        title = it.attr("alt")
-                        thumbnail_url = it.attr("data-src")
-                    }
-                }
-            }.ifEmpty { document.animeLinks(response) }
-            return AnimesPage(animeList, document.hasNextPage())
-        }
-        return vodListParse(response)
-    }
-
-    // Anime Details ===============================================================================
-
-    override fun animeDetailsParse(response: Response) = response.asJsoup().let { doc ->
-        val infos = doc.select(".slide-info")
-        val remark = doc.select(".slide-info-remarks").first()?.text()
-        SAnime.create().apply {
-            title = doc.selectFirst(".slide-info-title")?.text() ?: throw Exception("无法读取动画信息")
-            author = infos.getOrNull(1)?.selectFirst("a")?.text()
-            genre = infos.getOrNull(3)?.select("a")?.joinToString { it.text() }
-            description = doc.selectFirst("#height_limit.text")?.text()
-            status = when {
-                remark?.contains("|") == true -> SAnime.ONGOING
-                remark == "已完结" -> SAnime.COMPLETED
-                else -> SAnime.UNKNOWN
-            }
-        }
-    }
-
-    override fun episodeListRequest(anime: SAnime) = animeDetailsRequest(anime)
-
-    override fun episodeListParse(response: Response) = response.asJsoup().let { doc ->
-        val hosts = doc.select(".anthology-tab a").map {
-            it.text().substringBefore(it.selectFirst("span")?.text() ?: "").trim()
-        }
-        doc.select(".anthology-list-play").mapIndexed { i, e ->
-            e.select("a").map {
-                SEpisode.create().apply {
-                    setUrlWithoutDomain(it.absUrl("href"))
-                    name = it.text()
-                    scanlator = hosts.getOrNull(i)
-                }
-            }
-        }.flatten().reversed()
-    }
-
-    // Video List ==================================================================================
-
-    override fun videoListRequest(episode: SEpisode) = GET(baseUrl + episode.url, headers)
-
-    override fun videoListParse(response: Response): List<Video> {
-        val playerHtml = response.asJsoup().select(".player-left").html()
-        val origin = VIDEO_URL_REGEX.find(playerHtml)?.groupValues?.get(1) ?: throw Exception("找不到视频")
-        val base64 = Base64.decode(origin, Base64.DEFAULT).toString(Charsets.UTF_8)
-        // The page only has an ID for the site's player; the real URL is resolved in videoUrlParse.
-        return listOf(Video(URLDecoder.decode(base64, "UTF-8"), "默认", null))
-    }
-
-    override fun videoUrlRequest(video: Video) = GET(PARSE_URL + video.url, headers)
-
-    override fun videoUrlParse(response: Response): String {
-        val body = response.body.string()
-        val matches = KEY_REGEX.findAll(body).toList()
-        check(matches.size == 2) { "视频URL解析失败！" }
-        val url = URL_REGEX.find(body)?.groupValues?.get(1) ?: throw Exception("视频URL解析失败！")
-        return decrypt(url, matches[0].groupValues[1], matches[1].groupValues[1])
-    }
+    override fun popularAnimeRequest(page: Int): Request = throw UnsupportedOperationException()
+    override fun popularAnimeParse(response: Response): AnimesPage = throw UnsupportedOperationException()
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
+    override fun latestUpdatesParse(response: Response): AnimesPage = throw UnsupportedOperationException()
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request =
+        throw UnsupportedOperationException()
+    override fun searchAnimeParse(response: Response): AnimesPage = throw UnsupportedOperationException()
+    override fun animeDetailsParse(response: Response): SAnime = throw UnsupportedOperationException()
+    override fun episodeListParse(response: Response): List<SEpisode> = throw UnsupportedOperationException()
+    override fun videoListParse(response: Response): List<Video> = throw UnsupportedOperationException()
 
     companion object {
-        val VIDEO_URL_REGEX = Regex("\\bplayer_aaaa[^<>]*\"url\": ?\"(.*?)\"[^<>]*\\}")
-        val KEY_REGEX = Regex("now_(\\w+)")
-        val URL_REGEX = Regex("\"url\": \"([^:]+?)\"")
-        const val PARSE_URL = "https://player.cycanime.com/?url="
-        const val POPULAR_PREF = "POPULAR_DISPLAY"
-        private val BANGUMI_PATH_REGEX = Regex("""/bangumi/\d+\.html""")
-        private val WHITESPACE_REGEX = Regex("""\s+""")
-        private val HTML_MEDIA_TYPE = "text/html; charset=utf-8".toMediaType()
+        private const val POPULAR_PREF = "POPULAR_DISPLAY"
+        private const val PREF_USERNAME = "CYCITY_USERNAME"
+        private const val PREF_PASSWORD = "CYCITY_PASSWORD"
+        private const val PREF_TOKEN = "CYCITY_TOKEN"
 
-        // The loader page is ~1.5 KB; real list, search and anime pages are far larger.
-        private const val LOADER_MAX_SIZE = 8_000
+        private const val PAGE_SIZE = 30
+        private const val MAX_PAGE_SIZE = 100
+        private const val DEFAULT_ZONE = "1"
+        private const val SORT_BY_UPDATE = 0
+        private const val SORT_BY_HITS = 1
+
+        private val ANIME_PATH_REGEX = Regex("""^/anime/(\d+)""")
+        private val EPISODE_NUMBER_REGEX = Regex("""\d+(\.\d+)?""")
+        private val NON_WORD_REGEX = Regex("""[\s\p{P}\p{S}]+""")
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
         private const val DESKTOP_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
