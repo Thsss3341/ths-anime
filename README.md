@@ -9,7 +9,7 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
 |-----------|------|------------|
 | **Anime1.me** | [anime1.me](https://anime1.me) | Works again, real covers, better search, easy MyAnimeList (MAL) tracking |
 | **Xfani** (稀饭动漫) | [next.xifanacg.com](https://next.xifanacg.com) | Works again on the site's new website: search, browse and playback |
-| **Cycity** (次元城动漫) | [cycani.org](https://www.cycani.org) | Works again now that the site turns away Android devices |
+| **Cycity** (次元城动漫) | [cycani.org](https://www.cycani.org) | Works again on the site's rebuilt website (playback needs a free 次元城 account) |
 
 > [!NOTE]
 > This is a personal project, maintained for my own watching. Extensions may break when a site
@@ -59,11 +59,17 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
 
 ### Cycity (次元城动漫)
 
-- **Works again.** 次元城 now refuses its website to Android devices (HTTP 405, "请使用 Android
-  APP") to push its own app, and the yuzono extension identifies itself as an Android phone. This
-  version identifies itself as a desktop browser instead. Everything else works as before.
-- **Keeps your library.** Anime saved with the yuzono Cycity extension carry over, including watch
-  history.
+- **Works again.** 次元城 rebuilt its website in 2026, so the yuzono extension finds nothing
+  (and gets "请使用 Android APP" on Android). This version reads the same data the official app
+  uses.
+- **Search, Popular and Latest**, plus filters for channel (频道), sort order (排序), genre (类型)
+  and year (年份).
+- **Playback needs a 次元城 account.** The site only gives video links to logged-in users, in its
+  official app too. Register for free on the site or in the app, then enter the account in the
+  extension's settings ([Settings](#cycity-次元城动漫-1)). Browsing and searching work without one.
+- **Keeps your library.** Anime saved with the yuzono Cycity extension still open: they're found on
+  the new site by title. Their episode list is rebuilt once, so episodes you had marked as watched
+  show as unwatched again.
 
 ## Install
 
@@ -105,6 +111,8 @@ Open them from **Browse → Extensions**, then the extension's settings icon.
 | Setting | What it does | Default |
 |---------|--------------|---------|
 | **热门动画显示番剧周表** | Shows today's airing schedule under Popular instead of the most-watched anime. | Off |
+| **次元城账号** | Your 次元城 username. Needed to play videos. | Empty |
+| **次元城密码** | Your 次元城 password. Stored only in the app on your phone. | Empty |
 
 ## Tracking with MyAnimeList
 
@@ -176,16 +184,24 @@ and install Xfani from this repository ([Install](#install)).
 Open the episode's video list and pick another line. Lines sometimes miss a file, especially
 备用-1 for brand-new episodes.
 
-**Cycity: "HTTP error 405" or "请使用 Android APP"**<br>
-You're still using the old yuzono Cycity extension. Uninstall it and install Cycity from this
-repository ([Install](#install)).
+**Cycity: "HTTP error 405", "请使用 Android APP" or "无法解析页面"**<br>
+You're using the old yuzono Cycity extension or an older version from this repository. Update or
+install Cycity from this repository ([Install](#install)).
 
-**Cycity: "HTTP error 403" or "不提供服务"**<br>
-次元城 blocks some countries and VPN/proxy connections. Turn off any VPN or proxy and try again.
+**Cycity: "次元城要登录才能播放" or "次元城登录失败"**<br>
+Enter your 次元城 username and password in the extension's settings. If you don't have an account,
+register on [cycani.org](https://www.cycani.org) or in the 次元城 app.
 
-**Cycity: "请在 WebView 中输入验证码"**<br>
-The site wants a captcha for search. Open the extension's WebView (the globe icon), enter the
-code there, then search again.
+**Cycity: "播放太频繁"**<br>
+次元城 limits how many videos an account can open in a short time. Wait a while and try again.
+
+**Cycity: "这一集来自旧版网站"**<br>
+The episode was saved before the site's rebuild. Pull down on the anime's page to refresh its
+episode list.
+
+**Cycity: "新版次元城找不到…"**<br>
+An anime saved with the old extension couldn't be found on the new site by its title. Search for it
+again and add it to your library.
 
 **Adding the repository fails with "HTTP 404"**<br>
 Check that the URL was pasted exactly, or use the one-tap link. If you tried several times in a
