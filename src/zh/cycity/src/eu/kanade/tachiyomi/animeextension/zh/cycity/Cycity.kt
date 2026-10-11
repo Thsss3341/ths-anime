@@ -19,9 +19,11 @@ import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.jsoup.nodes.Document
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -69,7 +71,34 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
             chain.proceed(request)
         }
         .addInterceptor(::explainRefusal)
+        .addInterceptor(::renderLoaderPages)
         .build()
+
+    private val renderer by lazy { WebViewRenderer(DESKTOP_USER_AGENT) }
+
+    /**
+     * The site answers some requests with a ~1.5 KB loader page that only builds the real page
+     * with JavaScript (it shows fine in WebView, but has no content as raw HTML). Render those in
+     * an off-screen WebView and hand the finished HTML to the parsers instead.
+     */
+    private fun renderLoaderPages(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val response = chain.proceed(request)
+        if (request.method != "GET" || request.url.host != baseUrl.toHttpUrl().host) return response
+        if (response.header("Content-Type")?.startsWith("text/html") != true) return response
+        val body = response.peekBody(LOADER_MAX_SIZE.toLong()).string()
+        if (!body.isLoaderPage()) return response
+
+        val rendered = renderer.render(request.url.toString(), mapOf("Referer" to "$baseUrl/")) { it.hasContent() }
+        // Keep the loader page when rendering fails, so the parse error describes it.
+        if (rendered == null || !rendered.hasContent()) return response
+        response.close()
+        return response.newBuilder().body(rendered.toResponseBody(HTML_MEDIA_TYPE)).build()
+    }
+
+    private fun String.hasContent() = "/bangumi/" in this || "player_aaaa" in this
+
+    private fun String.isLoaderPage() = length < LOADER_MAX_SIZE && !hasContent()
 
     /** Turns the site's refusals into messages that say which request failed and why. */
     private fun explainRefusal(chain: Interceptor.Chain): Response {
@@ -195,7 +224,8 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
             appendLine("大小：${html.length}")
             appendLine("标记：$markers")
             appendLine("样式：$classes")
-            append("内容：${body()?.text()?.take(80).orEmpty()}")
+            appendLine("内容：${body()?.text()?.take(80).orEmpty()}")
+            append("源码：${html.replace(WHITESPACE_REGEX, " ").take(900)}")
         }
     }
 
@@ -357,6 +387,11 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
         const val PARSE_URL = "https://player.cycanime.com/?url="
         const val POPULAR_PREF = "POPULAR_DISPLAY"
         private val BANGUMI_PATH_REGEX = Regex("""/bangumi/\d+\.html""")
+        private val WHITESPACE_REGEX = Regex("""\s+""")
+        private val HTML_MEDIA_TYPE = "text/html; charset=utf-8".toMediaType()
+
+        // The loader page is ~1.5 KB; real list, search and anime pages are far larger.
+        private const val LOADER_MAX_SIZE = 8_000
 
         private const val DESKTOP_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
