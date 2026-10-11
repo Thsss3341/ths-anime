@@ -8,7 +8,7 @@ plugins {
 
 val extName = "Cycity"
 val extClass = ".Cycity"
-val extVersionCode = 11
+val extVersionCode = 12
 val isNsfw = false
 
 // Aniyomi reads the extensions-lib version from the major part of versionName.
@@ -87,4 +87,5 @@ base {
 
 dependencies {
     compileOnly(libs.bundles.provided)
+    implementation(libs.opencc4j)
 }

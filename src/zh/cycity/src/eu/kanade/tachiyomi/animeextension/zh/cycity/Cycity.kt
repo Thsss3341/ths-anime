@@ -87,9 +87,18 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
         listVideos(page, AnimeFilterList(SortFilter(state = SORT_BY_UPDATE)))
 
     override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
-        if (query.isBlank()) return listVideos(page, filters)
-        return api<ListDto<VideoCardDto>>(GET(searchUrl(query.trim(), page, PAGE_SIZE), headers)).toAnimesPage()
+        val variants = SearchTerms.variants(query)
+        if (variants.isEmpty()) return listVideos(page, filters)
+        val results = SearchTerms.merge(variants.map { searchPage(it, page) })
+        if (results.animes.isNotEmpty() || page > 1) return results
+        val bangumiName = withContext(Dispatchers.IO) {
+            runCatching { SearchTerms.bangumiName(client, variants.first(), variants) }.getOrNull()
+        } ?: return results
+        return searchPage(bangumiName, page)
     }
+
+    private suspend fun searchPage(query: String, page: Int): AnimesPage =
+        api<ListDto<VideoCardDto>>(GET(searchUrl(query, page, PAGE_SIZE), headers)).toAnimesPage()
 
     override fun getFilterList() = AnimeFilterList(ZoneFilter(), SortFilter(), TagFilter(), YearFilter())
 

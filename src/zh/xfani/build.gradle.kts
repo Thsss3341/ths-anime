@@ -8,7 +8,7 @@ plugins {
 
 val extName = "Xfani"
 val extClass = ".Xfani"
-val extVersionCode = 10
+val extVersionCode = 11
 val isNsfw = false
 
 // Aniyomi reads the extensions-lib version from the major part of versionName.
@@ -87,4 +87,5 @@ base {
 
 dependencies {
     compileOnly(libs.bundles.provided)
+    implementation(libs.opencc4j)
 }

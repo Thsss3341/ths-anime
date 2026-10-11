@@ -51,6 +51,8 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
 - **Works again.** 稀饭动漫 moved to a new website in 2026, so search, browsing and playback all
   stopped working in the yuzono extension. This version uses the new site.
 - **Search, Popular and Latest**, plus filters for channel (频道), sort order (排序) and year (年份).
+- **Search in Traditional or Simplified Chinese.** Taiwanese titles work too, e.g. 藥師少女的獨語 finds
+  药屋少女的呢喃.
 - **Every playback line.** Each episode lists a video for every line the site has (主线-1,
   主线-2, 备用-1), with your preferred line first, so you can switch if one doesn't play.
 - **Easy MAL tracking**, the same as for Anime1.me. See [Tracking with MyAnimeList](#tracking-with-myanimelist).
@@ -65,6 +67,8 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
   uses.
 - **Search, Popular and Latest**, plus filters for channel (频道), sort order (排序), genre (类型)
   and year (年份).
+- **Search in Traditional or Simplified Chinese.** Taiwanese titles work too, e.g. 間諜家家酒 finds
+  间谍过家家.
 - **Playback needs a 次元城 account.** The site only gives video links to logged-in users, in its
   official app too. Register for free on the site or in the app, then enter the account in the
   extension's settings ([Settings](#cycity-次元城动漫-1)). Browsing and searching work without one.
