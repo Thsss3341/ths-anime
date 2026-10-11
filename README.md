@@ -8,8 +8,8 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
 | Extension | Site | Highlights |
 |-----------|------|------------|
 | **Anime1.me** | [anime1.me](https://anime1.me) | Works again, real covers, better search, easy MyAnimeList (MAL) tracking |
-| **Xfani** (稀饭动漫) | [next.xifanacg.com](https://next.xifanacg.com) | Works again on the site's new website: search, browse and playback |
-| **Cycity** (次元城动漫) | [cycani.org](https://www.cycani.org) | Works again on the site's rebuilt website (playback needs a free 次元城 account) |
+| **Xfani** (稀饭动漫) | [next.xifanacg.com](https://next.xifanacg.com) | Works again on the site's new website: search, browse and playback; easy MAL tracking |
+| **Cycity** (次元城动漫) | [cycani.org](https://www.cycani.org) | Works again on the site's rebuilt website (playback needs a free 次元城 account); easy MAL tracking |
 
 > [!NOTE]
 > This is a personal project, maintained for my own watching. Extensions may break when a site
@@ -53,6 +53,7 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
 - **Search, Popular and Latest**, plus filters for channel (频道), sort order (排序) and year (年份).
 - **Every playback line.** Each episode lists a video for every line the site has (主线-1,
   主线-2, 备用-1), with your preferred line first, so you can switch if one doesn't play.
+- **Easy MAL tracking**, the same as for Anime1.me. See [Tracking with MyAnimeList](#tracking-with-myanimelist).
 - **Keeps your library.** Anime saved with the yuzono Xfani extension still open. Their episode
   list is rebuilt from the new site once, so episodes you had marked as watched show as unwatched
   again.
@@ -67,6 +68,7 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
 - **Playback needs a 次元城 account.** The site only gives video links to logged-in users, in its
   official app too. Register for free on the site or in the app, then enter the account in the
   extension's settings ([Settings](#cycity-次元城动漫-1)). Browsing and searching work without one.
+- **Easy MAL tracking**, the same as for Anime1.me. See [Tracking with MyAnimeList](#tracking-with-myanimelist).
 - **Keeps your library.** Anime saved with the yuzono Cycity extension still open: they're found on
   the new site by title. Their episode list is rebuilt once, so episodes you had marked as watched
   show as unwatched again.
@@ -105,12 +107,14 @@ Open them from **Browse → Extensions**, then the extension's settings icon.
 | Setting | What it does | Default |
 |---------|--------------|---------|
 | **首选播放线路** | Which line's video is listed first. The other lines are still listed below it. | 主线-1 |
+| **标题语言（方便MAL追踪）** | Adds the MAL title and ID to descriptions, or renames anime to their MAL title. See [Tracking with MyAnimeList](#tracking-with-myanimelist). | 中文 |
 
 ### Cycity (次元城动漫)
 
 | Setting | What it does | Default |
 |---------|--------------|---------|
 | **热门动画显示番剧周表** | Shows today's airing schedule under Popular instead of the most-watched anime. | Off |
+| **标题语言（方便MAL追踪）** | Adds the MAL title and ID to descriptions, or renames anime to their MAL title. See [Tracking with MyAnimeList](#tracking-with-myanimelist). | 中文 |
 | **次元城账号** | Your 次元城 username. Needed to play videos. | Empty |
 | **次元城密码** | Your 次元城 password. Stored only in the app on your phone. | Empty |
 | **最近一次错误** | Read-only. The full reason the last video failed to load, for reporting problems. | 无 |
@@ -120,8 +124,10 @@ extension then uses that login.
 
 ## Tracking with MyAnimeList
 
-This section is about **Anime1.me**. anime1's titles are in Chinese, which MyAnimeList's search can't find. Set
-**標題語言（方便MAL追蹤）** to the option you prefer:
+This works in **Anime1.me**, **Xfani** and **Cycity**. Their titles are in Chinese, which MyAnimeList's
+search can't find. Set **標題語言（方便MAL追蹤）** (in Xfani and Cycity: **标题语言（方便MAL追踪）**) to
+the option you prefer. Xfani and Cycity name the options in Simplified Chinese, and their first
+option is called 中文（网站原标题）.
 
 | Option | Title shown in the app | Description |
 |--------|------------------------|-------------|
