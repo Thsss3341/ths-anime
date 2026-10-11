@@ -87,8 +87,16 @@ class Xfani : AnimeHttpSource(), ConfigurableAnimeSource {
         return AnimesPage(animes, false)
     }
 
-    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage =
-        searchAnimes(page, query.trim(), filters)
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
+        val variants = SearchTerms.variants(query)
+        if (variants.isEmpty()) return searchAnimes(page, "", filters)
+        val results = SearchTerms.merge(variants.map { searchAnimes(page, it, filters) })
+        if (results.animes.isNotEmpty() || page > 1) return results
+        val bangumiName = withContext(Dispatchers.IO) {
+            runCatching { SearchTerms.bangumiName(client, variants.first(), variants) }.getOrNull()
+        } ?: return results
+        return searchAnimes(page, bangumiName, filters)
+    }
 
     private suspend fun searchAnimes(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         val body = buildJsonObject {
