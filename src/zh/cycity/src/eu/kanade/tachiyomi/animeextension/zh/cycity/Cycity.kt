@@ -22,6 +22,7 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import org.jsoup.nodes.Document
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.IOException
@@ -145,11 +146,60 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
                 title = link.text()
                 setUrlWithoutDomain(link.absUrl("href"))
             }
-        }
+        }.ifEmpty { doc.animeLinks(response) }
         AnimesPage(list, doc.hasNextPage())
     }
 
-    private fun org.jsoup.nodes.Document.hasNextPage(): Boolean {
+    /**
+     * Fallback for when the site renames its CSS classes: every link to an anime page
+     * ("/bangumi/<id>.html"), with its title and cover. If there are none, the page isn't what
+     * this extension understands, so fail with a description of it instead of showing nothing.
+     */
+    private fun Document.animeLinks(response: Response): List<SAnime> {
+        val found = LinkedHashMap<String, SAnime>()
+        for (link in select("a[href*=/bangumi/]")) {
+            val path = BANGUMI_PATH_REGEX.find(link.attr("href"))?.value ?: continue
+            val img = link.selectFirst("img") ?: link.parent()?.selectFirst("img")
+            val cover = img?.let { i ->
+                listOf("data-src", "data-original", "src").map { i.absUrl(it) }.firstOrNull { it.isNotBlank() }
+            }
+            val existing = found[path]
+            if (existing != null) {
+                if (existing.thumbnail_url.isNullOrBlank()) existing.thumbnail_url = cover
+                continue
+            }
+            val title = link.attr("title").ifBlank { img?.attr("alt").orEmpty() }.ifBlank { link.text() }.trim()
+            if (title.isEmpty()) continue
+            found[path] = SAnime.create().apply {
+                url = path
+                this.title = title
+                thumbnail_url = cover
+            }
+        }
+        if (found.isEmpty() && !text().contains("暂无")) throw Exception(describePage(response))
+        return found.values.toList()
+    }
+
+    /** A short description of an unexpected page, to screenshot and report. */
+    private fun Document.describePage(response: Response): String {
+        val html = outerHtml()
+        val classes = select("[class]").flatMap { it.classNames() }
+            .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(10)
+            .joinToString(" ") { it.key }
+        val markers = listOf("__NEXT_DATA__", "__NUXT__", "player_aaaa", "/bangumi/", "/play/", "api.php", "ds_api")
+            .filter { it in html }.joinToString(" ").ifEmpty { "无" }
+        return buildString {
+            appendLine("无法解析页面，请截图回报：")
+            appendLine("HTTP ${response.code} ${response.request.url.encodedPath}")
+            appendLine("标题：${title().take(40)}")
+            appendLine("大小：${html.length}")
+            appendLine("标记：$markers")
+            appendLine("样式：$classes")
+            append("内容：${body()?.text()?.take(80).orEmpty()}")
+        }
+    }
+
+    private fun Document.hasNextPage(): Boolean {
         val pages = selectFirst(".page-tip")?.text()?.substringAfter("当前")?.substringBefore("页")?.split("/")
         return pages != null && pages.getOrNull(0) != pages.getOrNull(1)
     }
@@ -237,7 +287,7 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
                         thumbnail_url = it.attr("data-src")
                     }
                 }
-            }
+            }.ifEmpty { document.animeLinks(response) }
             return AnimesPage(animeList, document.hasNextPage())
         }
         return vodListParse(response)
@@ -306,6 +356,7 @@ class Cycity : AnimeHttpSource(), ConfigurableAnimeSource {
         val URL_REGEX = Regex("\"url\": \"([^:]+?)\"")
         const val PARSE_URL = "https://player.cycanime.com/?url="
         const val POPULAR_PREF = "POPULAR_DISPLAY"
+        private val BANGUMI_PATH_REGEX = Regex("""/bangumi/\d+\.html""")
 
         private const val DESKTOP_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
