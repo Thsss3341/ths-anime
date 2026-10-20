@@ -3,13 +3,14 @@
 [English](README.md) | **繁體中文**
 
 適用於 [Anikku](https://github.com/komikku-app/anikku)、[Aniyomi](https://github.com/aniyomiorg/aniyomi)
-及其他 Aniyomi 系 App 的改良版動畫擴充套件：
+及其他 Aniyomi 系 App 的改良版動畫與影視擴充套件：
 
 | 擴充套件 | 網站 | 重點 |
 |----------|------|------|
 | **Anime1.me** | [anime1.me](https://anime1.me) | 恢復正常使用、真實封面、更好用的搜尋、方便的 MyAnimeList（MAL）追蹤 |
 | **Xfani**（稀飯動漫） | [next.xifanacg.com](https://next.xifanacg.com) | 支援網站改版後的新網站：搜尋、瀏覽和播放都恢復正常；方便 MAL 追蹤 |
 | **Cycity**（次元城動漫） | [cycani.org](https://www.cycani.org) | 支援網站改版後的新網站（播放需要免費的次元城帳號）；方便 MAL 追蹤 |
+| **愛迪影視** | [aidi.tv](https://aidi.tv) | 電影、美劇、英劇、韓劇、日劇、綜藝和紀錄片，1080P 高畫質，每集多條線路 |
 
 > [!NOTE]
 > 這是個人項目，主要供自己觀看使用。網站改版時擴展可能失效，修復視個人時間而定。大部分代碼在 AI（Claude Code）協助下編寫，並由我本人在設備上測試。
@@ -20,6 +21,7 @@
   - [Anime1.me](#anime1me)
   - [Xfani（稀飯動漫）](#xfani稀飯動漫)
   - [Cycity（次元城動漫）](#cycity次元城動漫)
+  - [愛迪影視](#愛迪影視)
 - [安裝](#安裝)
 - [設定](#設定)
 - [用 MyAnimeList 追蹤](#用-myanimelist-追蹤)
@@ -64,6 +66,15 @@
 - **保留收藏。** 用 yuzono Cycity 擴充套件收藏的動畫仍可開啟，會依標題在新網站上找回。它們的集數列表會重新建立一次，
   所以之前標記為已觀看的集數會再次顯示為未觀看。
 
+### 愛迪影視
+
+- **不只是動畫。** 電影、劇集（美劇、英劇、韓劇、日劇、陸劇…）、綜藝、紀錄片和動畫，
+  例如《絕命毒師》、《絕命律師》、《怪奇物語》、《魷魚遊戲》和《苦盡柑來遇見你》。
+- **高畫質。** 幾乎全部是 1080P，位元率比多數同類網站高（測試約 3–6 Mbps，例如《苦盡柑來遇見你》6.3 Mbps）。
+- **每集多條線路**（APP专用线路、VIP线路、蓝光四…），首選線路排在最前面，某條線路太慢時可以換一條。
+- **熱門、最新和搜尋**，並可依分類篩選。可用繁體或簡體中文搜尋。
+- 不需要帳號。
+
 ## 安裝
 
 1. **如果已安裝 yuzono 的 Anime1.me、Xfani 或 Cycity 擴充套件，請先解除安裝。** 名稱相同，Android 無法直接覆蓋安裝。
@@ -77,7 +88,7 @@
      https://raw.githubusercontent.com/thsss3341/ths-anime/repo/index.min.json
      ```
 
-3. 前往 **探索 → 擴充套件**，找到 **Anime1.me**、**Xfani** 和／或 **Cycity** 並安裝。如果 App 詢問，點 **信任**。
+3. 前往 **探索 → 擴充套件**，找到 **Anime1.me**、**Xfani**、**Cycity** 和／或 **愛迪影視**（列表中顯示為「爱迪影视」）並安裝。如果 App 詢問，點 **信任**。
 
 ## 設定
 
@@ -110,6 +121,12 @@
 | **最近一次错误** | 唯讀。上一次影片載入失敗的完整原因，回報問題時使用。 | 无 |
 
 也可以不填帳號，改在擴充套件的 WebView 裡登入次元城，擴充套件會使用那個登入。
+
+### 愛迪影視
+
+| 設定 | 作用 | 預設 |
+|------|------|------|
+| **首选播放线路** | 哪條線路的影片排在最前面。其他線路仍會列在下面。 | APP专用线路（測試中位元率最高） |
 
 ## 用 MyAnimeList 追蹤
 
@@ -201,6 +218,9 @@ Bangumi 的資料是簡體中文。選「拉取完整數據」時，播出狀態
 **簡介裡沒有 MAL 資料**<br>
 在動畫頁面往下拉重新整理。如果仍然沒有，代表找不到有把握的對應，請在 MAL 手動搜尋。
 
+**愛迪影視：影片無法播放或一直緩衝**<br>
+打開該集的影片列表，改選其他線路。
+
 **其他問題**<br>
 請到 [Issues](https://github.com/Thsss3341/ths-anime/issues) 回報，附上動畫名稱和發生的情況。
 
@@ -209,4 +229,4 @@ Bangumi 的資料是簡體中文。選「拉取完整數據」時，播出狀態
 - 以 [yuzono](https://github.com/yuzono/anime-extensions) 和
   [Kohi-den](https://github.com/Kohi-den/extensions-source) 的 Anime1.me、Xfani 和 Cycity 擴充套件為基礎。
 - 封面和資料來自 [Bangumi](https://bgm.tv)；MAL 標題和 ID 透過 [AniList](https://anilist.co) 取得。
-- 與 anime1.me、稀飯動漫及次元城動漫無關。以 [Apache License 2.0](LICENSE) 授權。
+- 與 anime1.me、稀飯動漫、次元城動漫及愛迪影視無關。以 [Apache License 2.0](LICENSE) 授權。
