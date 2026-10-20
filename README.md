@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
+Improved anime and video extensions for [Anikku](https://github.com/komikku-app/anikku),
 [Aniyomi](https://github.com/aniyomiorg/aniyomi) and other Aniyomi-based apps:
 
 | Extension | Site | Highlights |
@@ -10,6 +10,7 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
 | **Anime1.me** | [anime1.me](https://anime1.me) | Works again, real covers, better search, easy MyAnimeList (MAL) tracking |
 | **Xfani** (稀饭动漫) | [next.xifanacg.com](https://next.xifanacg.com) | Works again on the site's new website: search, browse and playback; easy MAL tracking |
 | **Cycity** (次元城动漫) | [cycani.org](https://www.cycani.org) | Works again on the site's rebuilt website (playback needs a free 次元城 account); easy MAL tracking |
+| **爱迪影视** | [aidi.tv](https://aidi.tv) | Films, US/UK/Korean/Japanese series, variety and documentaries in 1080p, with several lines per episode |
 
 > [!NOTE]
 > This is a personal project, maintained for my own watching. Extensions may break when a site
@@ -22,6 +23,7 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
   - [Anime1.me](#anime1me)
   - [Xfani (稀饭动漫)](#xfani-稀饭动漫)
   - [Cycity (次元城动漫)](#cycity-次元城动漫)
+  - [爱迪影视](#爱迪影视)
 - [Install](#install)
 - [Settings](#settings)
 - [Tracking with MyAnimeList](#tracking-with-myanimelist)
@@ -77,6 +79,19 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
   the new site by title. Their episode list is rebuilt once, so episodes you had marked as watched
   show as unwatched again.
 
+### 爱迪影视
+
+- **Not just anime.** Films, series (美剧, 英剧, 韩剧, 日剧, 国产剧…), variety shows, documentaries and
+  anime. For example Breaking Bad, Better Call Saul, Stranger Things, Squid Game and
+  苦尽柑来遇见你.
+- **High quality.** Almost everything is 1080p, at a higher bitrate than most similar sites (about
+  3–6 Mbps in tests, e.g. 6.3 Mbps for 苦尽柑来遇见你).
+- **Several lines per episode** (APP专用线路, VIP线路, 蓝光四, …), with your preferred line first, so
+  you can switch if one is slow.
+- **Popular, Latest and search**, plus a category filter (分类). Search works in Traditional or
+  Simplified Chinese.
+- No account needed.
+
 ## Install
 
 1. **If you have the yuzono Anime1.me, Xfani or Cycity extension installed, uninstall it first.** They
@@ -90,8 +105,8 @@ Improved anime extensions for [Anikku](https://github.com/komikku-app/anikku),
      https://raw.githubusercontent.com/thsss3341/ths-anime/repo/index.min.json
      ```
 
-3. Go to **Browse → Extensions**, find **Anime1.me**, **Xfani** and/or **Cycity** and install them. Tap
-   **Trust** if the app asks.
+3. Go to **Browse → Extensions**, find **Anime1.me**, **Xfani**, **Cycity** and/or **爱迪影视** and
+   install them. Tap **Trust** if the app asks.
 
 ## Settings
 
@@ -125,6 +140,12 @@ Open them from **Browse → Extensions**, then the extension's settings icon.
 
 Instead of entering your account, you can also log in to 次元城 in the extension's WebView; the
 extension then uses that login.
+
+### 爱迪影视
+
+| Setting | What it does | Default |
+|---------|--------------|---------|
+| **首选播放线路** | Which line's video is listed first. The other lines are still listed below it. | APP专用线路 (highest bitrate in tests) |
 
 ## Tracking with MyAnimeList
 
@@ -237,6 +258,9 @@ covers bother you.
 Pull down on the anime's page to refresh it. If it still doesn't appear, no confident match was
 found; search MAL by hand.
 
+**爱迪影视: a video doesn't play or keeps buffering**<br>
+Open the episode's video list and pick another line.
+
 **Something else doesn't work**<br>
 Open an [issue](https://github.com/Thsss3341/ths-anime/issues) with the anime's name and what
 happened.
@@ -247,4 +271,4 @@ happened.
   [Kohi-den](https://github.com/Kohi-den/extensions-source).
 - Covers and details from [Bangumi](https://bgm.tv); MAL titles and IDs via
   [AniList](https://anilist.co).
-- Not affiliated with anime1.me, 稀饭动漫 or 次元城动漫. Licensed under the [Apache License 2.0](LICENSE).
+- Not affiliated with anime1.me, 稀饭动漫, 次元城动漫 or 爱迪影视. Licensed under the [Apache License 2.0](LICENSE).
