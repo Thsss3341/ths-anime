@@ -11,6 +11,7 @@ Improved anime and video extensions for [Anikku](https://github.com/komikku-app/
 | **Xfani** (稀饭动漫) | [next.xifanacg.com](https://next.xifanacg.com) | Works again on the site's new website: search, browse and playback; easy MAL tracking |
 | **Cycity** (次元城动漫) | [cycani.org](https://www.cycani.org) | Works again on the site's rebuilt website (playback needs a free 次元城 account); easy MAL tracking |
 | **爱迪影视** | [aidi.tv](https://aidi.tv) | Films, US/UK/Korean/Japanese series, variety and documentaries in 1080p, with several lines per episode |
+| **小宝影院** | [xiaoheimi.cc](https://xiaoheimi.cc) | A large catalog of films, series, variety, anime and documentaries in 1080p |
 
 > [!NOTE]
 > This is a personal project, maintained for my own watching. Extensions may break when a site
@@ -24,6 +25,7 @@ Improved anime and video extensions for [Anikku](https://github.com/komikku-app/
   - [Xfani (稀饭动漫)](#xfani-稀饭动漫)
   - [Cycity (次元城动漫)](#cycity-次元城动漫)
   - [爱迪影视](#爱迪影视)
+  - [小宝影院](#小宝影院)
 - [Install](#install)
 - [Settings](#settings)
 - [Tracking with MyAnimeList](#tracking-with-myanimelist)
@@ -92,6 +94,18 @@ Improved anime and video extensions for [Anikku](https://github.com/komikku-app/
   Simplified Chinese.
 - No account needed.
 
+### 小宝影院
+
+- **A large catalog.** Films, series (欧美剧, 韩国剧, 日本剧, 国产剧…), variety, anime and documentaries,
+  including every season of Breaking Bad and Better Call Saul, Squid Game, 苦尽柑来遇见你 and
+  Stranger Things.
+- **1080p** (about 1.6–2.6 Mbps in tests).
+- **Popular, Latest and search**, plus filters for category (分类), sort order (排序), region (地区),
+  language (语言) and year (年份). Search works in Traditional or Simplified Chinese.
+- The site lists one category at a time, so Popular and Latest show the category chosen in the
+  settings (连续剧 by default).
+- No account needed. Formerly known as 小新TV.
+
 ## Install
 
 1. **If you have the yuzono Anime1.me, Xfani or Cycity extension installed, uninstall it first.** They
@@ -105,8 +119,8 @@ Improved anime and video extensions for [Anikku](https://github.com/komikku-app/
      https://raw.githubusercontent.com/thsss3341/ths-anime/repo/index.min.json
      ```
 
-3. Go to **Browse → Extensions**, find **Anime1.me**, **Xfani**, **Cycity** and/or **爱迪影视** and
-   install them. Tap **Trust** if the app asks.
+3. Go to **Browse → Extensions**, find **Anime1.me**, **Xfani**, **Cycity**, **爱迪影视** and/or
+   **小宝影院** and install them. Tap **Trust** if the app asks.
 
 ## Settings
 
@@ -146,6 +160,12 @@ extension then uses that login.
 | Setting | What it does | Default |
 |---------|--------------|---------|
 | **首选播放线路** | Which line's video is listed first. The other lines are still listed below it. | APP专用线路 (highest bitrate in tests) |
+
+### 小宝影院
+
+| Setting | What it does | Default |
+|---------|--------------|---------|
+| **热门/最新显示的分类** | Which category Popular and Latest show (连续剧, 电影, 综艺, 动漫 or 纪录片). Use the filters to browse any other category. | 连续剧 |
 
 ## Tracking with MyAnimeList
 
@@ -261,6 +281,13 @@ found; search MAL by hand.
 **爱迪影视: a video doesn't play or keeps buffering**<br>
 Open the episode's video list and pick another line.
 
+**爱迪影视: nothing loads**<br>
+The site itself is sometimes down (all of its addresses at once). Try again later.
+
+**小宝影院: "网站要求输入验证码"**<br>
+The site wants a captcha after many searches. Open the extension's WebView (the globe icon), search
+there once, then search again in the app.
+
 **Something else doesn't work**<br>
 Open an [issue](https://github.com/Thsss3341/ths-anime/issues) with the anime's name and what
 happened.
@@ -271,4 +298,4 @@ happened.
   [Kohi-den](https://github.com/Kohi-den/extensions-source).
 - Covers and details from [Bangumi](https://bgm.tv); MAL titles and IDs via
   [AniList](https://anilist.co).
-- Not affiliated with anime1.me, 稀饭动漫, 次元城动漫 or 爱迪影视. Licensed under the [Apache License 2.0](LICENSE).
+- Not affiliated with anime1.me, 稀饭动漫, 次元城动漫, 爱迪影视 or 小宝影院. Licensed under the [Apache License 2.0](LICENSE).
