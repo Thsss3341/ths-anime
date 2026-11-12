@@ -12,6 +12,7 @@ Improved anime and video extensions for [Anikku](https://github.com/komikku-app/
 | **Cycity** (次元城动漫) | [cycani.org](https://www.cycani.org) | Works again on the site's rebuilt website (playback needs a free 次元城 account); easy MAL tracking |
 | **爱迪影视** | [aidi.tv](https://aidi.tv) | Films, US/UK/Korean/Japanese series, variety and documentaries in 1080p, with several lines per episode |
 | **小宝影院** | [xiaoheimi.cc](https://xiaoheimi.cc) | A large catalog of films, series, variety, anime and documentaries in 1080p |
+| **独播库** | [dbku.tv](https://www.dbku.tv) | Chinese, Korean, Japanese, Taiwanese and Thai dramas, plus films, variety and anime, in 1080p |
 
 > [!NOTE]
 > This is a personal project, maintained for my own watching. Extensions may break when a site
@@ -26,6 +27,7 @@ Improved anime and video extensions for [Anikku](https://github.com/komikku-app/
   - [Cycity (次元城动漫)](#cycity-次元城动漫)
   - [爱迪影视](#爱迪影视)
   - [小宝影院](#小宝影院)
+  - [独播库](#独播库)
 - [Install](#install)
 - [Settings](#settings)
 - [Tracking with MyAnimeList](#tracking-with-myanimelist)
@@ -106,6 +108,20 @@ Improved anime and video extensions for [Anikku](https://github.com/komikku-app/
   settings (连续剧 by default).
 - No account needed. Formerly known as 小新TV.
 
+### 独播库
+
+- **Asian dramas.** Chinese (陆剧), Korean and Japanese (日韩剧), Taiwanese and Thai (台泰剧) and short
+  dramas (短剧), plus films, variety and anime, e.g. 泪之女王, 黑暗荣耀 and 爱的迫降. It has no
+  Western series.
+- **1080p** from the site's own video server (about 2 Mbps in tests).
+- **Popular, Latest and search**, plus filters for category (分类), sort order (排序), region (地区),
+  genre (类型), language (语言) and year (年份). Search works in Traditional or Simplified Chinese and
+  shows up to 30 results (the site's limit).
+- The site lists one category at a time, so Popular and Latest show the category chosen in the
+  settings (连续剧 by default).
+- Shows whether a series is finished (全16集) or still airing (更新至189集).
+- No account needed.
+
 ## Install
 
 1. **If you have the yuzono Anime1.me, Xfani or Cycity extension installed, uninstall it first.** They
@@ -119,8 +135,8 @@ Improved anime and video extensions for [Anikku](https://github.com/komikku-app/
      https://raw.githubusercontent.com/thsss3341/ths-anime/repo/index.min.json
      ```
 
-3. Go to **Browse → Extensions**, find **Anime1.me**, **Xfani**, **Cycity**, **爱迪影视** and/or
-   **小宝影院** and install them. Tap **Trust** if the app asks.
+3. Go to **Browse → Extensions**, find **Anime1.me**, **Xfani**, **Cycity**, **爱迪影视**, **小宝影院**
+   and/or **独播库** and install them. Tap **Trust** if the app asks.
 
 ## Settings
 
@@ -166,6 +182,12 @@ extension then uses that login.
 | Setting | What it does | Default |
 |---------|--------------|---------|
 | **热门/最新显示的分类** | Which category Popular and Latest show (连续剧, 电影, 综艺, 动漫 or 纪录片). Use the filters to browse any other category. | 连续剧 |
+
+### 独播库
+
+| Setting | What it does | Default |
+|---------|--------------|---------|
+| **热门/最新显示的分类** | Which category Popular and Latest show (连续剧 or one of its parts, 电影, 综艺 or 动漫). Use the filters to browse any other category. | 连续剧 |
 
 ## Tracking with MyAnimeList
 
@@ -288,6 +310,9 @@ The site itself is sometimes down (all of its addresses at once). Try again late
 The site wants a captcha after many searches. Open the extension's WebView (the globe icon), search
 there once, then search again in the app.
 
+**独播库: a search finds nothing**<br>
+The site only has Asian titles. Try a shorter part of the name, or the name used in mainland China.
+
 **Something else doesn't work**<br>
 Open an [issue](https://github.com/Thsss3341/ths-anime/issues) with the anime's name and what
 happened.
@@ -298,4 +323,4 @@ happened.
   [Kohi-den](https://github.com/Kohi-den/extensions-source).
 - Covers and details from [Bangumi](https://bgm.tv); MAL titles and IDs via
   [AniList](https://anilist.co).
-- Not affiliated with anime1.me, 稀饭动漫, 次元城动漫, 爱迪影视 or 小宝影院. Licensed under the [Apache License 2.0](LICENSE).
+- Not affiliated with anime1.me, 稀饭动漫, 次元城动漫, 爱迪影视, 小宝影院 or 独播库. Licensed under the [Apache License 2.0](LICENSE).
