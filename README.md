@@ -11,7 +11,7 @@ Improved anime and video extensions for [Anikku](https://github.com/komikku-app/
 | **Xfani** (稀饭动漫) | [next.xifanacg.com](https://next.xifanacg.com) | Works again on the site's new website: search, browse and playback; easy MAL tracking |
 | **Cycity** (次元城动漫) | [cycani.org](https://www.cycani.org) | Works again on the site's rebuilt website (playback needs a free 次元城 account); easy MAL tracking |
 | **爱迪影视** | [aidi.tv](https://aidi.tv) | Films, US/UK/Korean/Japanese series, variety and documentaries in 1080p, with several lines per episode |
-| **小宝影院** | [xiaoheimi.cc](https://xiaoheimi.cc) | A large catalog of films, series, variety, anime and documentaries in 1080p |
+| **小宝影院** | [ibaotv.com](https://ibaotv.com) | A large catalog of films, series, variety, anime and documentaries in 1080p |
 | **独播库** | [dbku.tv](https://www.dbku.tv) | Chinese, Korean, Japanese, Taiwanese and Thai dramas, plus films, variety and anime, in 1080p |
 
 > [!NOTE]

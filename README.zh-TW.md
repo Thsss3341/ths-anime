@@ -11,7 +11,7 @@
 | **Xfani**（稀飯動漫） | [next.xifanacg.com](https://next.xifanacg.com) | 支援網站改版後的新網站：搜尋、瀏覽和播放都恢復正常；方便 MAL 追蹤 |
 | **Cycity**（次元城動漫） | [cycani.org](https://www.cycani.org) | 支援網站改版後的新網站（播放需要免費的次元城帳號）；方便 MAL 追蹤 |
 | **愛迪影視** | [aidi.tv](https://aidi.tv) | 電影、美劇、英劇、韓劇、日劇、綜藝和紀錄片，1080P 高畫質，每集多條線路 |
-| **小寶影院** | [xiaoheimi.cc](https://xiaoheimi.cc) | 片庫很大：電影、劇集、綜藝、動畫和紀錄片，1080P |
+| **小寶影院** | [ibaotv.com](https://ibaotv.com) | 片庫很大：電影、劇集、綜藝、動畫和紀錄片，1080P |
 | **獨播庫** | [dbku.tv](https://www.dbku.tv) | 陸劇、韓劇、日劇、台劇和泰劇，以及電影、綜藝和動漫，1080P |
 
 > [!NOTE]
