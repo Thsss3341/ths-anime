@@ -30,11 +30,12 @@ import java.net.URLEncoder
 /**
  * 小宝影院 (formerly 小新TV): films, series (US, Korean, Japanese, Chinese…), variety, anime and
  * documentaries. A MacCMS site with the "myui" theme; every play page carries a direct m3u8 link.
+ * The site moved from xiaoheimi.cc, which now redirects here.
  */
 class Xiaobao : AnimeHttpSource(), ConfigurableAnimeSource {
     override val name = "小宝影院"
     override val lang = "zh"
-    override val baseUrl = "https://xiaoheimi.cc"
+    override val baseUrl = "https://ibaotv.com"
     override val supportsLatest = true
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -129,7 +130,8 @@ class Xiaobao : AnimeHttpSource(), ConfigurableAnimeSource {
     private fun org.jsoup.nodes.Element.toSAnime() = SAnime.create().apply {
         setUrlWithoutDomain(absUrl("href"))
         title = attr("title").trim()
-        thumbnail_url = attr("data-original").ifBlank { null }
+        // Covers are paths on the site, e.g. /upload/poster/f9/….webp.
+        thumbnail_url = absUrl("data-original").ifBlank { null }
     }
 
     /** The "下一页" link points back at the current page on the last page. */
@@ -149,7 +151,7 @@ class Xiaobao : AnimeHttpSource(), ConfigurableAnimeSource {
             ?.text()?.substringAfter(label)?.substringBefore("　")?.trim()?.ifBlank { null }
         return SAnime.create().apply {
             title = document.selectFirst(".myui-content__detail h1.title")?.text()?.trim().orEmpty()
-            thumbnail_url = document.selectFirst(".myui-content__thumb img")?.attr("data-original")?.ifBlank { null }
+            thumbnail_url = document.selectFirst(".myui-content__thumb img")?.absUrl("data-original")?.ifBlank { null }
             val info = data.firstOrNull { it.text().contains("分类：") }
             val category = info?.select("a")?.firstOrNull()?.text()
             val area = info?.select("a")?.getOrNull(1)?.text()
